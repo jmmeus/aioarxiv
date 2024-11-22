@@ -10,7 +10,7 @@ setup(
     version=version,
     packages=["aioarxiv"],
     # dependencies
-    python_requires=">=3.10",
+    python_requires=">=3.7",
     install_requires=["feedparser~=6.0.10", "aiohttp>=3.8.1"],
     tests_require=["pytest", "pdoc", "ruff"],
     # metadata for upload to PyPI

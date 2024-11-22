@@ -699,7 +699,7 @@ class Client(object):
 
         logger.info("Requesting page (first: %r, try: %d): %s", first_page, try_index, url)
 
-        async with self._session.get(url, headers={"user-agent": "aioarxiv/1.0.0"}) as resp:
+        async with self._session.get(url, headers={"user-agent": "aioarxiv/1.0.1"}) as resp:
             self._last_request_dt = datetime.now()
 
             if resp.status != 200:

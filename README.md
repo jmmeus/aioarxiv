@@ -50,10 +50,10 @@ async def main():
 
     # Fetch results asynchronously
     async with client as _client:
-        results = await _client.results(search)
+        results = _client.results(search)
 
         # Results is an AsyncGenerator, we iterate through the elements
-        for result in results:
+        async for result in results:
             print(result.title)
         # ... or exhaust it into a list
         all_results = [r async for r in results]
@@ -64,6 +64,7 @@ async def main():
         first_result = await results.__anext__()
         # ... or for Python >= 3.10 we can use the builtin anext method
         first_result = await anext(results)
+        print(first_result.title)
 
 asyncio.run(main())
 ```
@@ -82,13 +83,13 @@ async def main():
     search = aioarxiv.Search(query="au:del_maestro AND ti:checkerboard")
 
     async with client as _client:
-        results = await _client.results(search)
+        results = _client.results(search)
         first_result = await results.__anext__()
         print(first_result)
 
         # Search by specific paper ID
         search_by_id = aioarxiv.Search(id_list=["1605.08386v1"])
-        results = await _client.results(search_by_id)
+        results = _client.results(search_by_id)
         paper = await results.__anext__()
         print(paper.title)
 
@@ -108,7 +109,7 @@ async def main():
     # Download a paper by ID
     search = aioarxiv.Search(id_list=["1605.08386v1"])
     async with client as _client:
-        results = await _client.results(search)
+        results = _client.results(search)
         paper = await results.__anext__()
 
         # Download PDF asynchronously

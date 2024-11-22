@@ -1,4 +1,4 @@
-source := ${wildcard ./arxiv/*.py}
+source := ${wildcard ./aioarxiv/*.py}
 tests := ${wildcard tests/*.py}
 
 .PHONY: all lint test audit docs clean
@@ -20,10 +20,10 @@ audit:
 docs: docs/index.html
 docs/index.html: $(source) README.md
 	pdoc --version
-	pdoc --docformat "restructuredtext" ./arxiv/__init__.py -o docs
+	pdoc --docformat "restructuredtext" ./aioarxiv/__init__.py -o docs
 
 clean:
 	rm -rf build dist
 	rm -rf __pycache__ **/__pycache__
 	rm -rf *.pyc **/*.pyc
-	rm -rf arxiv.egg-info
+	rm -rf aioarxiv.egg-info

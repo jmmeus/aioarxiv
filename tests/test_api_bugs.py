@@ -1,12 +1,12 @@
 """
 Tests for work-arounds to known arXiv API bugs.
 """
-import arxiv
+import aioarxiv
 import unittest
 
 
-class TestAPIBugs(unittest.TestCase):
-    def test_missing_title(self):
+class TestAPIBugs(unittest.IsolatedAsyncioTestCase):
+    async def test_missing_title(self):
         """
         Papers with the title "0" do not have a title element in the Atom feed.
 
@@ -19,8 +19,9 @@ class TestAPIBugs(unittest.TestCase):
         """
         paper_without_title = "2104.12255v1"
         try:
-            results = list(arxiv.Search(id_list=[paper_without_title]).results())
-            self.assertEqual(len(results), 1)
-            self.assertEqual(results[0].get_short_id(), paper_without_title)
+            async with aioarxiv.Client() as arxivclient:
+                results = [r async for r in arxivclient.results(aioarxiv.Search(id_list=[paper_without_title]))]
+                self.assertEqual(len(results), 1)
+                self.assertEqual(results[0].get_short_id(), paper_without_title)
         except AttributeError:
             self.fail("got AttributeError fetching paper without title")

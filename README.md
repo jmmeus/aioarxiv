@@ -1,140 +1,174 @@
-# arxiv.py
-[![PyPI](https://img.shields.io/pypi/v/arxiv)](https://pypi.org/project/arxiv/) ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/arxiv) [![GitHub Workflow Status (branch)](https://img.shields.io/github/actions/workflow/status/lukasschwab/arxiv.py/python-package.yml?branch=master)](https://github.com/lukasschwab/arxiv.py/actions?query=branch%3Amaster) [![Full package documentation](https://img.shields.io/badge/docs-hosted-brightgreen)](https://lukasschwab.me/arxiv.py/index.html)
+# aioarxiv
 
-Python wrapper for [the arXiv API](https://arxiv.org/help/api/index).
+**Asynchronous Python wrapper for the arXiv API**
 
-[arXiv](https://arxiv.org/) is a project by the Cornell University Library that provides open access to 1,000,000+ articles in Physics, Mathematics, Computer Science, Quantitative Biology, Quantitative Finance, and Statistics.
+> **Credit**: Based on the original synchronous [`arxiv.py`](https://github.com/lukasschwab/arxiv.py) by Lukas Schwab
+
+[arXiv](https://arxiv.org/), maintained by the Cornell University Library, provides open access to 1,000,000+ scholarly articles in Physics, Mathematics, Computer Science, Quantitative Biology, Quantitative Finance, and Statistics.
+
+## Features
+
+- Fully asynchronous API interactions
+- Efficient, non-blocking arXiv searches
+- Support for downloading PDFs and source files
+- Flexible search and client configuration
+
+## Installation
+
+### From Git Repository
+
+```bash
+$ pip install git+https://github.com/jmmeus/aioarxiv.git
+```
+
+### Local Installation
+
+```bash
+$ git clone https://github.com/jmmeus/aioarxiv.git
+$ cd aioarxiv
+$ pip install .
+```
 
 ## Usage
 
-### Installation
-
-```bash
-$ pip install arxiv
-```
-
-In your Python script, include the line
+### Basic Search
 
 ```python
-import arxiv
+import asyncio
+import aioarxiv
+
+async def main():
+    # Initialise the asyncronous API client.
+    client = aioarxiv.Client()
+
+    # Search for the 10 most recent articles matching the keyword "quantum"
+    search = aioarxiv.Search(
+        query="quantum",
+        max_results=10,
+        sort_by=aioarxiv.SortCriterion.SubmittedDate
+    )
+
+    # Fetch results asynchronously
+    async with client as _client:
+        results = await _client.results(search)
+
+        # Results is an AsyncGenerator, we iterate through the elements
+        for result in results:
+            print(result.title)
+        # ... or exhaust it into a list
+        all_results = [r async for r in results]
+        print([r.title for r in all_results])
+
+        # Alternatively, we can access the first element using the 
+        # `async_iterator.__anext__()` magic method
+        first_result = await results.__anext__()
+        # ... or for Python >= 3.10 we can use the builtin anext method
+        first_result = await anext(results)
+
+asyncio.run(main())
 ```
 
-### Examples
-
-#### Fetching results
+### Advanced Search
 
 ```python
-import arxiv
+import asyncio
+import aioarxiv
 
-# Construct the default API client.
-client = arxiv.Client()
+async def main():
+    # Initialise the asyncronous API client.
+    client = aioarxiv.Client()
 
-# Search for the 10 most recent articles matching the keyword "quantum."
-search = arxiv.Search(
-  query = "quantum",
-  max_results = 10,
-  sort_by = arxiv.SortCriterion.SubmittedDate
-)
+    # Advanced query searching by author and title
+    search = aioarxiv.Search(query="au:del_maestro AND ti:checkerboard")
 
-results = client.results(search)
+    async with client as _client:
+        results = await _client.results(search)
+        first_result = await results.__anext__()
+        print(first_result)
 
-# `results` is a generator; you can iterate over its elements one by one...
-for r in client.results(search):
-  print(r.title)
-# ...or exhaust it into a list. Careful: this is slow for large results sets.
-all_results = list(results)
-print([r.title for r in all_results])
+        # Search by specific paper ID
+        search_by_id = aioarxiv.Search(id_list=["1605.08386v1"])
+        results = await _client.results(search_by_id)
+        paper = await results.__anext__()
+        print(paper.title)
 
-# For advanced query syntax documentation, see the arXiv API User Manual:
-# https://arxiv.org/help/api/user-manual#query_details
-search = arxiv.Search(query = "au:del_maestro AND ti:checkerboard")
-first_result = next(client.results(search))
-print(first_result)
-
-# Search for the paper with ID "1605.08386v1"
-search_by_id = arxiv.Search(id_list=["1605.08386v1"])
-# Reuse client to fetch the paper, then print its title.
-first_result = next(client.results(search))
-print(first_result.title)
+asyncio.run(main())
 ```
 
-#### Downloading papers
-
-To download a PDF of the paper with ID "1605.08386v1," run a `Search` and then use `Result.download_pdf()`:
+### Downloading Papers
 
 ```python
-import arxiv
+import asyncio
+import aioarxiv
 
-paper = next(arxiv.Client().results(arxiv.Search(id_list=["1605.08386v1"])))
-# Download the PDF to the PWD with a default filename.
-paper.download_pdf()
-# Download the PDF to the PWD with a custom filename.
-paper.download_pdf(filename="downloaded-paper.pdf")
-# Download the PDF to a specified directory with a custom filename.
-paper.download_pdf(dirpath="./mydir", filename="downloaded-paper.pdf")
+async def main():
+    # Initialise the asyncronous API client.
+    client = aioarxiv.Client()
+
+    # Download a paper by ID
+    search = aioarxiv.Search(id_list=["1605.08386v1"])
+    async with client as _client:
+        results = await _client.results(search)
+        paper = await results.__anext__()
+
+        # Download PDF asynchronously
+        await paper.download_pdf()
+        
+        # Download with custom filename and directory
+        await paper.download_pdf(
+            dirpath="./downloads", 
+            filename="quantum-paper.pdf"
+        )
+
+        # Download source archive
+        await paper.download_source(filename="paper-source.tar.gz")
+
+asyncio.run(main())
 ```
 
-The same interface is available for downloading .tar.gz files of the paper source:
+### Custom Client Configuration
 
 ```python
-import arxiv
+import asyncio
+import aioarxiv
 
-paper = next(arxiv.Client().results(arxiv.Search(id_list=["1605.08386v1"])))
-# Download the archive to the PWD with a default filename.
-paper.download_source()
-# Download the archive to the PWD with a custom filename.
-paper.download_source(filename="downloaded-paper.tar.gz")
-# Download the archive to a specified directory with a custom filename.
-paper.download_source(dirpath="./mydir", filename="downloaded-paper.tar.gz")
+async def main():
+    # Configure async client with custom parameters
+    big_slow_client = aioarxiv.Client(
+        page_size=1000,
+        delay_seconds=10.0,
+        num_retries=5
+    )
+
+    search = aioarxiv.Search(query="quantum")
+    async with big_slow_client as _client:
+        async for result in _client.results(search):
+            print(result.title)
+
+asyncio.run(main())
 ```
 
-#### Fetching results with a custom client
+## Logging
+
+Configure logging to inspect network behavior and API interactions:
 
 ```python
-import arxiv
+import logging
+import aioarxiv
 
-big_slow_client = arxiv.Client(
-  page_size = 1000,
-  delay_seconds = 10.0,
-  num_retries = 5
-)
-
-# Prints 1000 titles before needing to make another request.
-for result in big_slow_client.results(arxiv.Search(query="quantum")):
-  print(result.title)
+logging.basicConfig(level=logging.DEBUG)
 ```
 
-#### Logging
+## Types
 
-To inspect this package's network behavior and API logic, configure a `DEBUG`-level logger.
+- `Client`: Configurable async client for fetching results
+- `Search`: Defines search parameters for arXiv database
+- `Result`: Represents paper metadata with download methods. The meaning of the underlying raw data is documented in the [arXiv API User Manual: Details of Atom Results Returned](https://arxiv.org/help/api/user-manual#_details_of_atom_results_returned).
 
-```pycon
->>> import logging, arxiv
->>> logging.basicConfig(level=logging.DEBUG)
->>> client = arxiv.Client()
->>> paper = next(client.results(arxiv.Search(id_list=["1605.08386v1"])))
-INFO:arxiv.arxiv:Requesting 100 results at offset 0
-INFO:arxiv.arxiv:Requesting page (first: False, try: 0): https://export.arxiv.org/api/query?search_query=&id_list=1605.08386v1&sortBy=relevance&sortOrder=descending&start=0&max_results=100
-DEBUG:urllib3.connectionpool:Starting new HTTPS connection (1): export.arxiv.org:443
-DEBUG:urllib3.connectionpool:https://export.arxiv.org:443 "GET /api/query?search_query=&id_list=1605.08386v1&sortBy=relevance&sortOrder=descending&start=0&max_results=100&user-agent=arxiv.py%2F1.4.8 HTTP/1.1" 200 979
-```
+## Contributing
 
-## Types 
+Contributions are welcome! Please open issues and submit pull requests on the GitHub repository.
 
-### Client
+## Acknowledgements
 
-A `Client` specifies a reusable strategy for fetching results from arXiv's API. For most use cases the default client should suffice.
-
-Clients configurations specify pagination and retry logic. *Reusing* a client allows successive API calls to use the same connection pool and ensures they abide by the rate limit you set.
-
-### Search
-
-A `Search` specifies a search of arXiv's database. Use `Client.results` to get a generator yielding `Result`s.
-
-### Result
-
-The `Result` objects yielded by `Client.results` include metadata about each paper and helper methods for downloading their content.
-
-The meaning of the underlying raw data is documented in the [arXiv API User Manual: Details of Atom Results Returned](https://arxiv.org/help/api/user-manual#_details_of_atom_results_returned).
-
-`Result` also exposes helper methods for downloading papers: `Result.download_pdf` and `Result.download_source`.
+This package is an asynchronous reimplementation of the original [`arxiv.py`](https://github.com/lukasschwab/arxiv.py) by Lukas Schwab, designed to provide async capabilities for arXiv API interactions.

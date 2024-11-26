@@ -11,8 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
     - name: Install Ruff
-      uses: chartboost/ruff-action@v1
+      run: pip install ruff
     - name: Check format with ruff
       run: ruff format --check --verbose .
 
@@ -20,10 +24,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
     - name: Set up flake8 annotations
       uses: rbialon/flake8-annotations@v1
     - name: Install Ruff
-      uses: chartboost/ruff-action@v1
+      run: pip install ruff
     - name: Lint with ruff
       run: ruff check --verbose .
 

@@ -1,5 +1,7 @@
 # aioarxiv
 
+[![GitHub Workflow Status (branch)](https://img.shields.io/github/actions/workflow/status/jmmeus/aioarxiv/python-package.yml?branch=master)](https://github.com/jmmeus/aioarxiv/actions?query=branch%3Amaster) [![Full package documentation](https://img.shields.io/badge/docs-hosted-brightgreen)](https://jmmeus.github.io/aioarxiv/aioarxiv.html)
+
 **Asynchronous Python wrapper for the arXiv API**
 
 > **Credit**: Based on the original synchronous [`arxiv.py`](https://github.com/lukasschwab/arxiv.py) by Lukas Schwab

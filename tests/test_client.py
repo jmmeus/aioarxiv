@@ -155,7 +155,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
                 mock_sleep.assert_not_called()
                 # Overwrite _last_request_dt to minimize flakiness: different
                 # environments will have different page fetch times.
-                client._last_request_dt = datetime.now()
+                client.rate_limiter._last_request_dt = datetime.now()
                 await client._parse_feed(url)
                 mock_sleep.assert_called_once_with(approx(client.delay_seconds, rel=1e-3))
 
@@ -173,7 +173,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
                 # `test_sleep_standard`.
                 await client._parse_feed(url1)
                 mock_sleep.assert_not_called()
-                client._last_request_dt = datetime.now()
+                client.rate_limiter._last_request_dt = datetime.now()
                 await client._parse_feed(url2)
                 mock_sleep.assert_called_once_with(approx(client.delay_seconds, rel=1e-3))
 
@@ -186,12 +186,12 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             with patch.object(client, '_session', mock_session):
                 url = client._format_url(aioarxiv.Search(query="quantum"), 0, 1)
                 # If _last_request_dt is less than delay_seconds ago, sleep.
-                client._last_request_dt = datetime.now() - timedelta(seconds=client.delay_seconds - 1)
+                client.rate_limiter._last_request_dt = datetime.now() - timedelta(seconds=client.delay_seconds - 1)
                 await client._parse_feed(url)
                 mock_sleep.assert_called_once()
                 mock_sleep.reset_mock()
                 # If _last_request_dt is at least delay_seconds ago, don't sleep.
-                client._last_request_dt = datetime.now() - timedelta(seconds=client.delay_seconds)
+                client.rate_limiter._last_request_dt = datetime.now() - timedelta(seconds=client.delay_seconds)
                 await client._parse_feed(url)
                 mock_sleep.assert_not_called()
 

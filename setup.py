@@ -1,6 +1,6 @@
 from setuptools import setup
 
-version = "1.0.1"
+version = "1.0.2"
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
@@ -10,7 +10,7 @@ setup(
     version=version,
     packages=["aioarxiv"],
     # dependencies
-    python_requires=">=3.7",
+    python_requires=">=3.8",
     install_requires=["feedparser~=6.0.10", "aiohttp>=3.8.1"],
     tests_require=["pytest", "pdoc", "ruff"],
     # metadata for upload to PyPI
@@ -24,7 +24,6 @@ setup(
     url="https://github.com/jmmeus/aioarxiv",
     classifiers=[
         "Programming Language :: Python",
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",

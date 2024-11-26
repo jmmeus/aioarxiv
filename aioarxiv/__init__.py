@@ -9,6 +9,7 @@ import os
 import math
 import re
 import aiohttp
+from contextlib import asynccontextmanager
 
 from yarl import URL
 from datetime import datetime, timedelta, timezone
@@ -21,6 +22,34 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_TIME = datetime.min
 
+class AsyncRateLimiter:
+    """A rate limiter for async contexts."""
+    def __init__(self, calls: int = 1, period: float = 3.0):
+        self.calls = calls
+        self.period = period
+        self.lock = asyncio.Lock()
+        self._last_request_dt: Optional[datetime] = None
+
+    @asynccontextmanager
+    async def acquire(self):
+        """
+        Acquires the rate limiter, waiting if necessary.
+        Usage:
+            async with rate_limiter.acquire():
+                # do rate-limited work here
+        """
+        async with self.lock:
+            if self._last_request_dt is not None:
+                required = timedelta(seconds=self.period)
+                since_last_request = datetime.now() - self._last_request_dt
+                if since_last_request < required:
+                    to_sleep = (required - since_last_request).total_seconds()
+                    logger.info("Sleeping: %f seconds", to_sleep)
+                    await asyncio.sleep(to_sleep)
+            try:
+                yield
+            finally:
+                self._last_request_dt = datetime.now()
 
 class Result(object):
     """
@@ -539,8 +568,10 @@ class Client(object):
     """
     Number of times to retry a failing API request before raising an Exception.
     """
-
-    _last_request_dt: datetime
+    rate_limiter: AsyncRateLimiter
+    """
+    An asynchronous rate limiter for API requests.
+    """
     _session: aiohttp.ClientSession
 
     def __init__(self, page_size: int = 100, delay_seconds: float = 3.0, num_retries: int = 3):
@@ -555,7 +586,7 @@ class Client(object):
         self.page_size = page_size
         self.delay_seconds = delay_seconds
         self.num_retries = num_retries
-        self._last_request_dt: Optional[datetime] = None
+        self.rate_limiter = AsyncRateLimiter(period=delay_seconds)
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def __aenter__(self):
@@ -688,38 +719,26 @@ class Client(object):
         number of seconds has not passed since `_parse_feed` was last called,
         sleeps until delay_seconds seconds have passed.
         """
-        # If this call would violate the rate limit, sleep until it doesn't.
-        if self._last_request_dt is not None:
-            required = timedelta(seconds=self.delay_seconds)
-            since_last_request = datetime.now() - self._last_request_dt
-            if since_last_request < required:
-                to_sleep = (required - since_last_request).total_seconds()
-                logger.info("Sleeping: %f seconds", to_sleep)
-                await asyncio.sleep(to_sleep)
+        async with self.rate_limiter.acquire():
+            logger.info("Requesting page (first: %r, try: %d): %s", first_page, try_index, url)
 
-        logger.info("Requesting page (first: %r, try: %d): %s", first_page, try_index, url)
+            async with self._session.get(url, headers={"user-agent": "aioarxiv/1.0.2"}) as resp:
+                if resp.status != 200:
+                    raise HTTPError(url, try_index, resp.status)
 
-        async with self._session.get(url, headers={"user-agent": "aioarxiv/1.0.1"}) as resp:
-            self._last_request_dt = datetime.now()
+                content = await resp.content.read()
+                feed = feedparser.parse(content)
 
-            if resp.status != 200:
-                raise HTTPError(url, try_index, resp.status)
+                if len(feed.entries) == 0 and not first_page:
+                    raise UnexpectedEmptyPageError(url, try_index, feed)
 
-            content = await resp.content.read()
+                if feed.bozo:
+                    logger.warning(
+                        "Bozo feed; consider handling: %s",
+                        feed.bozo_exception if "bozo_exception" in feed else None,
+                    )
 
-            feed = feedparser.parse(content)
-
-            if len(feed.entries) == 0 and not first_page:
-                raise UnexpectedEmptyPageError(url, try_index, feed)
-
-            if feed.bozo:
-                logger.warning(
-                    "Bozo feed; consider handling: %s",
-                    feed.bozo_exception if "bozo_exception" in feed else None,
-                )
-
-            return feed
-
+                return feed
 
 class ArxivError(Exception):
     """This package's base Exception class."""

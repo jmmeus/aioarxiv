@@ -2,8 +2,10 @@ import unittest
 from unittest.mock import MagicMock, call, patch, AsyncMock
 import aioarxiv
 from datetime import datetime, timedelta
+from typing import List
 from pytest import approx
 import aiohttp
+import asyncio
 
 def session_with_empty_response(code: int) -> AsyncMock:
     # Create a mock ClientSession
@@ -226,4 +228,85 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
                         call(approx(client.delay_seconds, abs=1e-2)),
                     ]
                     * client.num_retries
+                )
+
+    async def test_concurrent_requests_rate_limit(self):
+        # Create a mock session that simulates network requests
+        mock_session = session_with_empty_response(200)
+
+        async with aioarxiv.Client(delay_seconds=1) as client:
+            # Patch the session
+            with patch.object(client, '_session', mock_session):
+                # Simulate many concurrent requests
+                search = aioarxiv.Search(query="test", max_results=10)
+
+                # List to store request times
+                request_times : List[datetime] = []
+
+                async def concurrent_request(i):
+                    url = client._format_url(search, i * 10, 10)
+                    await client._parse_feed(url)
+                    request_times.append(datetime.now())
+
+                # Use a counter to track `asyncio.sleep` calls
+                sleep_call_count = 0
+
+                async def wrapped_sleep(seconds):
+                    nonlocal sleep_call_count
+                    sleep_call_count += 1
+                    # Call the original asyncio.sleep
+                    await original_sleep(seconds)
+
+                # Access the original asyncio.sleep
+                original_sleep = asyncio.sleep
+
+                # Patch asyncio.sleep to monitor calls
+                with patch("asyncio.sleep", side_effect=wrapped_sleep):
+                    # Run 5 concurrent requests
+                    await asyncio.gather(*[concurrent_request(i) for i in range(5)])
+
+                # Verify that requests were properly spaced
+                for i in range(1, len(request_times)):
+                    time_diff = (request_times[i] - request_times[i-1]).total_seconds()
+                    # Ensure each request is at least 1 second apart
+                    self.assertGreaterEqual(
+                        time_diff,
+                        0.9,  # Allow slight tolerance
+                        f"Requests {i-1} and {i} were too close: {time_diff} seconds"
+                    )
+
+                # Verify the number of GET requests matches the number of requests
+                self.assertEqual(mock_session.get.call_count, 5)
+
+                # Should have slept 4 times
+                self.assertEqual(sleep_call_count, 4)
+
+    async def test_live_concurrent_requests(self):
+        async with aioarxiv.Client() as client:
+            request_times : List[datetime] = []
+
+            async def make_request(query):
+                search = aioarxiv.Search(query=query, max_results=1)
+                results = [r async for r in client.results(search)]
+                request_times.append(datetime.now())
+                return results
+
+            # Perform 3 concurrent requests
+            results = await asyncio.gather(
+                make_request("quantum physics"),
+                make_request("machine learning"),
+                make_request("artificial intelligence")
+            )
+
+            # Verify results
+            for result_list in results:
+                self.assertTrue(len(result_list) > 0)
+
+            # Check timing between requests
+            for i in range(1, len(request_times)):
+                time_diff = (request_times[i] - request_times[i-1]).total_seconds()
+                self.assertGreaterEqual(
+                    time_diff,
+                    2.9,  # Allowing slight tolerance under 3 seconds
+                    f"Requests {i-1} and {i} were too close: {time_diff} seconds"
                 )

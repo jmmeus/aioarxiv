@@ -1,6 +1,7 @@
 """
 Tests for work-arounds to known arXiv API bugs.
 """
+
 import aioarxiv
 import unittest
 
@@ -20,7 +21,12 @@ class TestAPIBugs(unittest.IsolatedAsyncioTestCase):
         paper_without_title = "2104.12255v1"
         try:
             async with aioarxiv.Client() as arxivclient:
-                results = [r async for r in arxivclient.results(aioarxiv.Search(id_list=[paper_without_title]))]
+                results = [
+                    r
+                    async for r in arxivclient.results(
+                        aioarxiv.Search(id_list=[paper_without_title])
+                    )
+                ]
                 self.assertEqual(len(results), 1)
                 self.assertEqual(results[0].get_short_id(), paper_without_title)
         except AttributeError:

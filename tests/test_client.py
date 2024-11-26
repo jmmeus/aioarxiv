@@ -7,6 +7,7 @@ from pytest import approx
 import aiohttp
 import asyncio
 
+
 def session_with_empty_response(code: int) -> AsyncMock:
     # Create a mock ClientSession
     mock_session = AsyncMock(spec=aiohttp.ClientSession)
@@ -17,13 +18,14 @@ def session_with_empty_response(code: int) -> AsyncMock:
 
     # Create a mock content with read method
     mock_content = AsyncMock()
-    mock_content.read = AsyncMock(return_value=b'')
+    mock_content.read = AsyncMock(return_value=b"")
     mock_response.content = mock_content
 
     # Configure the mock session's get method to return the mock response
     mock_session.get.return_value.__aenter__.return_value = mock_response
 
     return mock_session
+
 
 class TestClient(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_format_id(self):
@@ -43,7 +45,10 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             results = [r async for r in client.results(aioarxiv.Search(id_list=["0808.05394"]))]
             self.assertEqual(len(results), 0)
             # Generator should still yield valid entries.
-            results = [r async for r in client.results(aioarxiv.Search(id_list=["0808.05394", "1707.08567"]))]
+            results = [
+                r
+                async for r in client.results(aioarxiv.Search(id_list=["0808.05394", "1707.08567"]))
+            ]
             self.assertEqual(len(results), 1)
 
     async def test_max_results(self):
@@ -120,7 +125,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
 
         async with aioarxiv.Client() as broken_client:
             # Patch the ClientSession creation in the Client class
-            with patch.object(broken_client, '_session', mock_session):
+            with patch.object(broken_client, "_session", mock_session):
 
                 async def broken_get():
                     search = aioarxiv.Search(query="quantum")
@@ -147,8 +152,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
 
         async with aioarxiv.Client() as client:
             # Patch the ClientSession creation in the Client class
-            with patch.object(client, '_session', mock_session):
-
+            with patch.object(client, "_session", mock_session):
                 url = client._format_url(aioarxiv.Search(query="quantum"), 0, 1)
                 # A client should sleep until delay_seconds have passed.
                 await client._parse_feed(url)
@@ -166,7 +170,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
 
         async with aioarxiv.Client() as client:
             # Patch the ClientSession creation in the Client class
-            with patch.object(client, '_session', mock_session):
+            with patch.object(client, "_session", mock_session):
                 url1 = client._format_url(aioarxiv.Search(query="quantum"), 0, 1)
                 url2 = client._format_url(aioarxiv.Search(query="testing"), 0, 1)
                 # Rate limiting is URL-independent; expect same behavior as in
@@ -183,15 +187,19 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         mock_session = session_with_empty_response(code=200)
         async with aioarxiv.Client() as client:
             # Patch the ClientSession creation in the Client class
-            with patch.object(client, '_session', mock_session):
+            with patch.object(client, "_session", mock_session):
                 url = client._format_url(aioarxiv.Search(query="quantum"), 0, 1)
                 # If _last_request_dt is less than delay_seconds ago, sleep.
-                client.rate_limiter._last_request_dt = datetime.now() - timedelta(seconds=client.delay_seconds - 1)
+                client.rate_limiter._last_request_dt = datetime.now() - timedelta(
+                    seconds=client.delay_seconds - 1
+                )
                 await client._parse_feed(url)
                 mock_sleep.assert_called_once()
                 mock_sleep.reset_mock()
                 # If _last_request_dt is at least delay_seconds ago, don't sleep.
-                client.rate_limiter._last_request_dt = datetime.now() - timedelta(seconds=client.delay_seconds)
+                client.rate_limiter._last_request_dt = datetime.now() - timedelta(
+                    seconds=client.delay_seconds
+                )
                 await client._parse_feed(url)
                 mock_sleep.assert_not_called()
 
@@ -202,7 +210,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
 
         async with aioarxiv.Client(delay_seconds=0) as client:
             # Patch the ClientSession creation in the Client class
-            with patch.object(client, '_session', mock_session):
+            with patch.object(client, "_session", mock_session):
                 url = client._format_url(aioarxiv.Search(query="quantum"), 0, 1)
                 await client._parse_feed(url)
                 await client._parse_feed(url)
@@ -214,7 +222,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         mock_session = session_with_empty_response(code=500)
         async with aioarxiv.Client() as client:
             # Patch the ClientSession creation in the Client class
-            with patch.object(client, '_session', mock_session):
+            with patch.object(client, "_session", mock_session):
                 url = client._format_url(aioarxiv.Search(query="quantum"), 0, 1)
                 try:
                     await client._parse_feed(url)
@@ -236,12 +244,12 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
 
         async with aioarxiv.Client(delay_seconds=1) as client:
             # Patch the session
-            with patch.object(client, '_session', mock_session):
+            with patch.object(client, "_session", mock_session):
                 # Simulate many concurrent requests
                 search = aioarxiv.Search(query="test", max_results=10)
 
                 # List to store request times
-                request_times : List[datetime] = []
+                request_times: List[datetime] = []
 
                 async def concurrent_request(i):
                     url = client._format_url(search, i * 10, 10)
@@ -267,12 +275,12 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
 
                 # Verify that requests were properly spaced
                 for i in range(1, len(request_times)):
-                    time_diff = (request_times[i] - request_times[i-1]).total_seconds()
+                    time_diff = (request_times[i] - request_times[i - 1]).total_seconds()
                     # Ensure each request is at least 1 second apart
                     self.assertGreaterEqual(
                         time_diff,
                         0.9,  # Allow slight tolerance
-                        f"Requests {i-1} and {i} were too close: {time_diff} seconds"
+                        f"Requests {i-1} and {i} were too close: {time_diff} seconds",
                     )
 
                 # Verify the number of GET requests matches the number of requests
@@ -283,7 +291,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
 
     async def test_live_concurrent_requests(self):
         async with aioarxiv.Client() as client:
-            request_times : List[datetime] = []
+            request_times: List[datetime] = []
 
             async def make_request(query):
                 search = aioarxiv.Search(query=query, max_results=1)
@@ -295,7 +303,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             results = await asyncio.gather(
                 make_request("quantum physics"),
                 make_request("machine learning"),
-                make_request("artificial intelligence")
+                make_request("artificial intelligence"),
             )
 
             # Verify results
@@ -304,9 +312,9 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
 
             # Check timing between requests
             for i in range(1, len(request_times)):
-                time_diff = (request_times[i] - request_times[i-1]).total_seconds()
+                time_diff = (request_times[i] - request_times[i - 1]).total_seconds()
                 self.assertGreaterEqual(
                     time_diff,
                     2.9,  # Allowing slight tolerance under 3 seconds
-                    f"Requests {i-1} and {i} were too close: {time_diff} seconds"
+                    f"Requests {i-1} and {i} were too close: {time_diff} seconds",
                 )

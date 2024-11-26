@@ -1,4 +1,5 @@
 """.. include:: ../README.md"""
+
 from __future__ import annotations
 
 import logging
@@ -22,8 +23,10 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_TIME = datetime.min
 
+
 class AsyncRateLimiter:
     """A rate limiter for async contexts."""
+
     def __init__(self, calls: int = 1, period: float = 3.0):
         self.calls = calls
         self.period = period
@@ -50,6 +53,7 @@ class AsyncRateLimiter:
                 yield
             finally:
                 self._last_request_dt = datetime.now()
+
 
 class Result(object):
     """
@@ -228,7 +232,12 @@ class Result(object):
             ]
         )
 
-    async def download_pdf(self, dirpath: str = "./", filename: str = "", session: Optional[aiohttp.ClientSession] = None) -> str:
+    async def download_pdf(
+        self,
+        dirpath: str = "./",
+        filename: str = "",
+        session: Optional[aiohttp.ClientSession] = None,
+    ) -> str:
         """
         Downloads the PDF for this result to the specified directory.
 
@@ -246,7 +255,7 @@ class Result(object):
         try:
             async with session.get(self.pdf_url) as response:
                 response.raise_for_status()
-                with open(path, 'wb') as f:
+                with open(path, "wb") as f:
                     f.write(await response.read())
         finally:
             if close_session:
@@ -254,7 +263,12 @@ class Result(object):
 
         return path
 
-    async def download_source(self, dirpath: str = "./", filename: str = "", session: Optional[aiohttp.ClientSession] = None) -> str:
+    async def download_source(
+        self,
+        dirpath: str = "./",
+        filename: str = "",
+        session: Optional[aiohttp.ClientSession] = None,
+    ) -> str:
         """
         Downloads the source tarfile for this result to the specified
         directory.
@@ -276,7 +290,7 @@ class Result(object):
         try:
             async with session.get(source_url) as response:
                 response.raise_for_status()
-                with open(path, 'wb') as f:
+                with open(path, "wb") as f:
                     f.write(await response.read())
         finally:
             if close_session:
@@ -421,7 +435,7 @@ class Result(object):
         message: str
         """Message describing what caused this error."""
 
-        def __init__(self, missing_field : str):
+        def __init__(self, missing_field: str):
             self.missing_field = missing_field
             self.message = "Entry from arXiv missing required info"
 
@@ -537,6 +551,7 @@ class Search(object):
             "sortBy": self.sort_by.value,
             "sortOrder": self.sort_order.value,
         }
+
 
 class Client(object):
     """
@@ -739,6 +754,7 @@ class Client(object):
                     )
 
                 return feed
+
 
 class ArxivError(Exception):
     """This package's base Exception class."""

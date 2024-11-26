@@ -46,7 +46,9 @@ class TestResult(unittest.IsolatedAsyncioTestCase):
 
     async def test_from_feed_entry(self):
         async with self.client as _client:
-            feed = await _client._parse_feed("https://export.arxiv.org/api/query?search_query=testing")
+            feed = await _client._parse_feed(
+                "https://export.arxiv.org/api/query?search_query=testing"
+            )
             feed_entry = feed.entries[0]
             result = aioarxiv.Result._from_feed_entry(feed_entry)
             self.assert_valid_result(result)

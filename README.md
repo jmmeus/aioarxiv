@@ -13,6 +13,7 @@
 - Fully asynchronous API interactions
 - Efficient, non-blocking arXiv searches
 - Support for downloading PDFs and source files
+- Access to arXiv's RSS feed
 - Flexible search and client configuration
 
 ## Installation
@@ -71,20 +72,23 @@ async def main():
 asyncio.run(main())
 ```
 
-### Advanced Search
+### Advanced Search and Client Configuration
 
 ```python
 import asyncio
 import aioarxiv
 
 async def main():
-    # Initialise the asyncronous API client.
-    client = aioarxiv.Client()
-
-    # Advanced query searching by author and title
-    search = aioarxiv.Search(query="au:del_maestro AND ti:checkerboard")
+    # Configure async client with custom parameters
+    client = aioarxiv.Client(
+        page_size=1000,  # Number of results per page
+        delay_seconds=10.0,  # Delay between API requests
+        num_retries=5  # Number of retry attempts for failed requests
+    )
 
     async with client as _client:
+        # Advanced query searching by author and title
+        search = aioarxiv.Search(query="au:del_maestro AND ti:checkerboard")
         results = _client.results(search)
         first_result = await results.__anext__()
         print(first_result)
@@ -94,6 +98,11 @@ async def main():
         results = _client.results(search_by_id)
         paper = await results.__anext__()
         print(paper.title)
+
+        # Iterate through all results
+        search = aioarxiv.Search(query="quantum", max_results=100)
+        async for result in _client.results(search):
+            print(result.title)
 
 asyncio.run(main())
 ```
@@ -129,24 +138,48 @@ async def main():
 asyncio.run(main())
 ```
 
-### Custom Client Configuration
+### RSS Feed Access
+
+The RSS feed provides a faster alternative to sorting results by publication date, though it comes with some trade-offs:
+- Limited to newly published papers of only the previous full day (max 2000)
+- Contains less metadata per result (e.g. no published/updated timestamps)
+- Depends on feed update frequency (once a day at midnight eastern time), making a regular search more reliable for finding the newest papers
+- Still supports core functionality like PDF and source downloads
 
 ```python
 import asyncio
 import aioarxiv
 
 async def main():
-    # Configure async client with custom parameters
-    big_slow_client = aioarxiv.Client(
-        page_size=1000,
-        delay_seconds=10.0,
-        num_retries=5
-    )
+    client = aioarxiv.Client()
 
-    search = aioarxiv.Search(query="quantum")
-    async with big_slow_client as _client:
-        async for result in _client.results(search):
-            print(result.title)
+    async with client as _client:
+        # Get the most recent entries from the RSS feed
+        feed_results = _client.get_feed("astro-ph")
+        
+        # Iterate through feed entries
+        async for entry in feed_results:
+            # Contains largely the same metadata as search results
+            # Also inlcudes announcement type info to filter for
+            # only new (not updated or cross-posted) entries
+            if entry.announce_type == aioarxiv.AnnounceType.New:
+                # Print only info for new publications
+                print(entry.entry_id, entry.title, entry.authors)
+
+        # Limit the number of results
+        limited_feed = _client.get_feed("astro-ph", max_results=5)
+        feed_entries = [entry async for entry in limited_feed]
+
+        # Get first entry using anext
+        first_entry = await anext(feed_results)
+        print(first_entry.title)
+        
+        # Download PDF and source files just like you would search results
+        await first_entry.download_pdf(
+            dirpath="./downloads",
+            filename="latest-quantum-paper.pdf"
+        )
+        await first_entry.download_source()
 
 asyncio.run(main())
 ```
@@ -164,9 +197,11 @@ logging.basicConfig(level=logging.DEBUG)
 
 ## Types
 
-- `Client`: Configurable async client for fetching results
+- `Client`: Configurable async client for fetching results and RSS feeds
 - `Search`: Defines search parameters for arXiv database
-- `Result`: Represents paper metadata with download methods. The meaning of the underlying raw data is documented in the [arXiv API User Manual: Details of Atom Results Returned](https://arxiv.org/help/api/user-manual#_details_of_atom_results_returned).
+- `BaseResult`: Base class for results, not intended to be instantiated by the user.
+- `SearchResult`: Represents paper metadata with download methods. The meaning of the underlying raw data is documented in the [arXiv API User Manual: Details of Atom Results Returned](https://arxiv.org/help/api/user-manual#_details_of_atom_results_returned).
+- `RSSResult`: Represents RSS feed paper metadata with download methods. The meaning of the underlying raw data is documented in the [arXiv info: RSS feed Specifications](https://info.arxiv.org/help/rss_specifications.html).
 
 ## Contributing
 

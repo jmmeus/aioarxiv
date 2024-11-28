@@ -55,37 +55,21 @@ class AsyncRateLimiter:
                 self._last_request_dt = datetime.now()
 
 
-class Result(object):
-    """
-    An entry in an arXiv query results feed.
-
-    See [the arXiv API User's Manual: Details of Atom Results
-    Returned](https://arxiv.org/help/api/user-manual#_details_of_atom_results_returned).
-    """
+class BaseResult(object):
+    """A base class for shared attributes and methods between SearchResult and RSSResult."""
 
     entry_id: str
     """A url of the form `https://arxiv.org/abs/{id}`."""
-    updated: datetime
-    """When the result was last updated."""
-    published: datetime
-    """When the result was originally published."""
     title: str
     """The title of the result."""
     authors: List[Author]
     """The result's authors."""
     summary: str
     """The result abstract."""
-    comment: Optional[str]
-    """The authors' comment if present."""
     journal_ref: Optional[str]
     """A journal reference if present."""
     doi: Optional[str]
     """A URL for the resolved DOI to an external resource if present."""
-    primary_category: str
-    """
-    The result's primary arXiv category. See [arXiv: Category
-    Taxonomy](https://arxiv.org/category_taxonomy).
-    """
     categories: List[str]
     """
     All of the result's categories. See [arXiv: Category
@@ -97,108 +81,43 @@ class Result(object):
     """The URL of a PDF version of this result if present among links."""
     _raw: feedparser.FeedParserDict
     """
-    The raw feedparser result object if this Result was constructed with
-    Result._from_feed_entry.
+    The raw feedparser result object if this BaseResult was constructed with
+    BaseResult._from_feed_entry.
     """
 
     def __init__(
         self,
         entry_id: str,
-        updated: datetime = _DEFAULT_TIME,
-        published: datetime = _DEFAULT_TIME,
         title: str = "",
         authors: List[Author] = [],
         summary: str = "",
-        comment: str = "",
         journal_ref: str = "",
         doi: str = "",
-        primary_category: str = "",
         categories: List[str] = [],
         links: List[Link] = [],
         _raw: feedparser.FeedParserDict = None,
     ):
         """
-        Constructs an arXiv search result item.
-
-        In most cases, prefer using `Result._from_feed_entry` to parsing and
-        constructing `Result`s yourself.
+        Constructs an arXiv result item.
         """
         self.entry_id = entry_id
-        self.updated = updated
-        self.published = published
         self.title = title
         self.authors = authors
         self.summary = summary
-        self.comment = comment
         self.journal_ref = journal_ref
         self.doi = doi
-        self.primary_category = primary_category
         self.categories = categories
         self.links = links
         # Calculated members
-        self.pdf_url = self._get_pdf_url(links)
+        self.pdf_url = self._get_pdf_url(links, entry_id)
         # Debugging
         self._raw = _raw
-
-    @classmethod
-    def _from_feed_entry(cls, entry: feedparser.FeedParserDict) -> Result:
-        """
-        Converts a feedparser entry for an arXiv search result feed into a
-        Result object.
-        """
-        if not hasattr(entry, "id"):
-            raise cls.MissingFieldError("id")
-        # Title attribute may be absent for certain titles. Defaulting to "0" as
-        # it's the only title observed to cause this bug.
-        # https://github.com/lukasschwab/arxiv.py/issues/71
-        # title = entry.title if hasattr(entry, "title") else "0"
-        title = "0"
-        if hasattr(entry, "title"):
-            title = entry.title
-        else:
-            logger.warning("Result %s is missing title attribute; defaulting to '0'", entry.id)
-        return cls(
-            entry_id=entry.id,
-            updated=cls._to_datetime(entry.updated_parsed),
-            published=cls._to_datetime(entry.published_parsed),
-            title=re.sub(r"\s+", " ", title),
-            authors=[cls.Author._from_feed_author(a) for a in entry.authors],
-            summary=entry.summary,
-            comment=entry.get("arxiv_comment"),
-            journal_ref=entry.get("arxiv_journal_ref"),
-            doi=entry.get("arxiv_doi"),
-            primary_category=entry.arxiv_primary_category.get("term"),
-            categories=[tag.get("term") for tag in entry.tags],
-            links=[cls.Link._from_feed_link(link) for link in entry.links],
-            _raw=entry,
-        )
 
     def __str__(self) -> str:
         return self.entry_id
 
-    def __repr__(self) -> str:
-        return (
-            "{}(entry_id={}, updated={}, published={}, title={}, authors={}, "
-            "summary={}, comment={}, journal_ref={}, doi={}, "
-            "primary_category={}, categories={}, links={})"
-        ).format(
-            _classname(self),
-            repr(self.entry_id),
-            repr(self.updated),
-            repr(self.published),
-            repr(self.title),
-            repr(self.authors),
-            repr(self.summary),
-            repr(self.comment),
-            repr(self.journal_ref),
-            repr(self.doi),
-            repr(self.primary_category),
-            repr(self.categories),
-            repr(self.links),
-        )
-
     def __eq__(self, other) -> bool:
-        if isinstance(other, Result):
+        if isinstance(other, BaseResult):
             return self.entry_id == other.entry_id
         return False
 
@@ -299,18 +218,44 @@ class Result(object):
         return path
 
     @staticmethod
-    def _get_pdf_url(links: List[Link]) -> Optional[str]:
+    def _get_pdf_url(links: List[Link], entry_id: str) -> Optional[str]:
         """
         Finds the PDF link among a result's links and returns its URL.
 
-        Should only be called once for a given `Result`, in its constructor.
-        After construction, the URL should be available in `Result.pdf_url`.
+        Should only be called once for a given `BaseResult`, in its constructor.
+        After construction, the URL should be available in `BaseResult.pdf_url`.
         """
         pdf_urls = [link.href for link in links if link.title == "pdf"]
         if len(pdf_urls) == 0:
-            return None
+            logger.warning(
+                "Result %s has no PDF link, constructing possible pdf link from entry_id", entry_id
+            )
+            # Define regular expressions
+            post2007regex = r"https://arxiv\.org/abs/\d{4}\.\d{5}(v\d+)?"
+            pre2007regex = r"https://arxiv\.org/abs/[a-zA-Z0-9_.+-]+/\d{7}(v\d+)?"
+
+            # Function to validate the URL
+            def validate_arxiv_url(url):
+                if re.match(post2007regex, url) or re.match(pre2007regex, url):
+                    return True
+                else:
+                    return False
+
+            if validate_arxiv_url(entry_id):
+                asd_urls = [entry_id]
+            else:
+                asd_urls = [link.href for link in links if validate_arxiv_url(link.href)]
+            if len(asd_urls) == 0:
+                return None
+            elif len(asd_urls) > 1:
+                logger.warning(
+                    "Result %s has multiple ADS links; using %s for pdf link construction",
+                    entry_id,
+                    asd_urls[0],
+                )
+            return re.sub(r"/abs/", "/pdf/", asd_urls[0], count=1)
         elif len(pdf_urls) > 1:
-            logger.warning("Result has multiple PDF links; using %s", pdf_urls[0])
+            logger.warning("Result %s has multiple PDF links; using %s", entry_id, pdf_urls[0])
         return pdf_urls[0]
 
     @staticmethod
@@ -341,12 +286,12 @@ class Result(object):
             self.name = name
 
         @classmethod
-        def _from_feed_author(cls, feed_author: feedparser.FeedParserDict) -> Result.Author:
+        def _from_feed_author(cls, feed_author: feedparser.FeedParserDict) -> BaseResult.Author:
             """
             Constructs an `Author` with the name specified in an author object
             from a feed entry.
 
-            See usage in `Result._from_feed_entry`.
+            See usage in `BaseResult._from_feed_entry`.
             """
             return cls(feed_author.name)
 
@@ -357,7 +302,7 @@ class Result(object):
             return f"{self.__class__.__name__}({repr(self.name)})"
 
         def __eq__(self, other) -> bool:
-            if isinstance(other, Result.Author):
+            if isinstance(other, BaseResult.Author):
                 return self.name == other.name
             return False
 
@@ -371,7 +316,7 @@ class Result(object):
         title: Optional[str]
         """The link's title."""
         rel: Optional[str]
-        """The link's relationship to the `Result`."""
+        """The link's relationship to the `BaseResult`."""
         content_type: Optional[str]
         """The link's HTTP content type."""
 
@@ -394,12 +339,12 @@ class Result(object):
             self.content_type = content_type
 
         @classmethod
-        def _from_feed_link(cls, feed_link: feedparser.FeedParserDict) -> Result.Link:
+        def _from_feed_link(cls, feed_link: feedparser.FeedParserDict) -> BaseResult.Link:
             """
             Constructs a `Link` with link metadata specified in a link object
             from a feed entry.
 
-            See usage in `Result._from_feed_entry`.
+            See usage in `BaseResult._from_feed_entry`.
             """
             return cls(
                 href=feed_link.href,
@@ -420,7 +365,7 @@ class Result(object):
             )
 
         def __eq__(self, other) -> bool:
-            if isinstance(other, Result.Link):
+            if isinstance(other, BaseResult.Link):
                 return self.href == other.href
             return False
 
@@ -441,6 +386,195 @@ class Result(object):
 
         def __repr__(self) -> str:
             return f"{self.__class__.__name__}({repr(self.missing_field)})"
+
+
+class SearchResult(BaseResult):
+    """
+    An entry in an arXiv query results feed.
+
+    See [the arXiv API User's Manual: Details of Atom Results
+    Returned](https://arxiv.org/help/api/user-manual#_details_of_atom_results_returned).
+    """
+
+    updated: datetime
+    """When the result was last updated."""
+    published: Optional[datetime]
+    """When the result was originally published."""
+    comment: Optional[str]
+    """The authors' comment if present."""
+    primary_category: str
+    """
+    The result's primary arXiv category. See [arXiv: Category
+    Taxonomy](https://arxiv.org/category_taxonomy).
+    """
+
+    def __init__(
+        self,
+        updated: datetime = _DEFAULT_TIME,
+        published: datetime = _DEFAULT_TIME,
+        comment: str = "",
+        primary_category: str = "",
+        **kwargs,
+    ):
+        """
+        Constructs an arXiv search result item.
+
+        In most cases, prefer using `SearchResult._from_feed_entry` to parsing and
+        constructing `SearchResult`s yourself.
+        """
+
+        self.updated = updated
+        self.published = published
+        self.comment = comment
+        self.primary_category = primary_category
+        super().__init__(**kwargs)
+
+    @classmethod
+    def _from_feed_entry(cls, entry: feedparser.FeedParserDict) -> SearchResult:
+        """
+        Converts a feedparser entry for an arXiv search result feed into a
+        SearchResult object.
+        """
+        if not hasattr(entry, "id"):
+            raise cls.MissingFieldError("id")
+        # Title attribute may be absent for certain titles. Defaulting to "0" as
+        # it's the only title observed to cause this bug.
+        # https://github.com/lukasschwab/arxiv.py/issues/71
+        # title = entry.title if hasattr(entry, "title") else "0"
+        title = "0"
+        if hasattr(entry, "title"):
+            title = entry.title
+        else:
+            logger.warning("Result %s is missing title attribute; defaulting to '0'", entry.id)
+        return cls(
+            entry_id=entry.id,
+            updated=cls._to_datetime(entry.updated_parsed),
+            published=cls._to_datetime(entry.published_parsed),
+            title=re.sub(r"\s+", " ", title),
+            authors=[cls.Author._from_feed_author(a) for a in entry.authors],
+            summary=entry.summary,
+            comment=entry.get("arxiv_comment"),
+            journal_ref=entry.get("arxiv_journal_ref"),
+            doi=entry.get("arxiv_doi"),
+            primary_category=entry.arxiv_primary_category.get("term"),
+            categories=[tag.get("term") for tag in entry.tags],
+            links=[cls.Link._from_feed_link(link) for link in entry.links],
+            _raw=entry,
+        )
+
+    def __repr__(self) -> str:
+        return (
+            "{}(entry_id={}, updated={}, published={}, title={}, authors={}, "
+            "summary={}, comment={}, journal_ref={}, doi={}, "
+            "primary_category={}, categories={}, links={})"
+        ).format(
+            _classname(self),
+            repr(self.entry_id),
+            repr(self.updated),
+            repr(self.published),
+            repr(self.title),
+            repr(self.authors),
+            repr(self.summary),
+            repr(self.comment),
+            repr(self.journal_ref),
+            repr(self.doi),
+            repr(self.primary_category),
+            repr(self.categories),
+            repr(self.links),
+        )
+
+
+class RSSResult(BaseResult):
+    """
+    An entry in an arXiv RSS feed.
+
+    See [the arXiv API User's Manual: RSS feed Specifications
+    ](https://info.arxiv.org/help/rss_specifications.html).
+    """
+
+    announce_type: AnnounceType
+    """
+    The type of announcement. Can be one of `AnnounceType.New`, `AnnounceType.Replace`, `AnnounceType.Cross`,
+    or `AnnounceType.ReplaceCross`. See [arXiv: ATOM feed Specifications](https://info.arxiv.org/help/atom_specifications.html)
+    """
+    feed_date: datetime
+    """The date this feed was updated. Feeds are updated daily at midnight Eastern Standard Time."""
+
+    def __init__(
+        self,
+        announce_type: AnnounceType = None,
+        feed_date: datetime = _DEFAULT_TIME,
+        **kwargs,
+    ):
+        """
+        Constructs an arXiv RSS feed result item.
+
+        In most cases, prefer using `RSSResult._from_feed_entry` to parsing and
+        constructing `RSSResult`s yourself.
+        """
+        self.announce_type = announce_type
+        self.feed_date = feed_date
+        super().__init__(**kwargs)
+
+    @classmethod
+    def _from_feed_entry(cls, entry: feedparser.FeedParserDict) -> RSSResult:
+        """
+        Converts a feedparser entry for an arXiv RSS feed into a
+        BaseResult object.
+        """
+        title = "0"
+        if hasattr(entry, "title"):
+            title = entry.title
+        else:
+            logger.warning("Result %s is missing title attribute; defaulting to '0'", entry.id)
+        return cls(
+            entry_id=str("https://arxiv.org/abs/" + entry.summary.split(" ", 1)[0])
+            if "arxiv:" not in entry.summary.lower()
+            else str("https://arxiv.org/abs/" + entry.summary.split(" ", 1)[0][6:]),
+            feed_date=cls._to_datetime(entry.published_parsed),
+            title=re.sub(r"\s+", " ", title),
+            authors=[cls.Author._from_feed_author(a) for a in entry.authors],
+            summary=entry.summary.split("Abstract: ", 1)[-1],
+            announce_type=AnnounceType(entry.arxiv_announce_type),
+            journal_ref=entry.get("arxiv_journal_ref"),
+            doi=entry.get("arxiv_doi"),
+            categories=[tag.get("term") for tag in entry.tags],
+            links=[cls.Link._from_feed_link(link) for link in entry.links],
+            _raw=entry,
+        )
+
+    def __repr__(self) -> str:
+        return (
+            "{}(entry_id={}, feed_date={}, title={}, authors={}, "
+            "summary={}, announce_type={}, journal_ref={}, doi={}, "
+            "categories={}, links={})"
+        ).format(
+            _classname(self),
+            repr(self.entry_id),
+            repr(self.feed_date),
+            repr(self.title),
+            repr(self.authors),
+            repr(self.summary),
+            repr(self.announce_type),
+            repr(self.journal_ref),
+            repr(self.doi),
+            repr(self.categories),
+            repr(self.links),
+        )
+
+
+class AnnounceType(Enum):
+    """
+    The type of announcement in an arXiv RSS feed.
+
+    See [arXiv: ATOM feed Specifications]
+    (https://info.arxiv.org/help/atom_specifications.html).
+    """
+
+    New = "new"
+    Replace = "replace"
+    Cross = "cross"
+    ReplaceCross = "replace-cross"
 
 
 class SortCriterion(Enum):
@@ -630,10 +764,10 @@ class Client(object):
             repr(self.num_retries),
         )
 
-    async def results(self, search: Search, offset: int = 0) -> AsyncGenerator[Result, None]:
+    async def results(self, search: Search, offset: int = 0) -> AsyncGenerator[SearchResult, None]:
         """
         Uses this client configuration to fetch one page of the search results
-        at a time, yielding the parsed `Result`s, until `max_results` results
+        at a time, yielding the parsed `SearchResult`s, until `max_results` results
         have been yielded or there are no more search results.
 
         If all tries fail, raises an `UnexpectedEmptyPageError` or `HTTPError`.
@@ -656,7 +790,7 @@ class Client(object):
                     break
             yield result
 
-    async def _results(self, search: Search, offset: int = 0) -> AsyncGenerator[Result, None]:
+    async def _results(self, search: Search, offset: int = 0) -> AsyncGenerator[SearchResult, None]:
         """
         Internal async method to generate results from arXiv API.
         """
@@ -678,8 +812,8 @@ class Client(object):
         while feed.entries:
             for entry in feed.entries:
                 try:
-                    yield Result._from_feed_entry(entry)
-                except Result.MissingFieldError as e:
+                    yield SearchResult._from_feed_entry(entry)
+                except SearchResult.MissingFieldError as e:
                     logger.warning("Skipping partial result: %s", e)
             offset += len(feed.entries)
             if offset >= total_results:
@@ -737,7 +871,7 @@ class Client(object):
         async with self.rate_limiter.acquire():
             logger.info("Requesting page (first: %r, try: %d): %s", first_page, try_index, url)
 
-            async with self._session.get(url, headers={"user-agent": "aioarxiv/1.0.2"}) as resp:
+            async with self._session.get(url, headers={"user-agent": "aioarxiv/1.1.0"}) as resp:
                 if resp.status != 200:
                     raise HTTPError(url, try_index, resp.status)
 
@@ -754,6 +888,68 @@ class Client(object):
                     )
 
                 return feed
+
+    async def get_feed(
+        self, query: str, max_results: int = 2000, feed_type: str = "RSS"
+    ) -> AsyncGenerator[RSSResult, None]:
+        """
+        Fetches results from the specified feed type (RSS or ATOM).
+
+        Args:
+            query (str): The query string for the arXiv feed.
+            max_results (int): The maximum number of results to return. Defaults to 2000 (the maximum for a feed).
+            feed_type (str): The feed type, either 'RSS' or 'ATOM'. Defaults to 'RSS'.
+
+        Returns:
+            AsyncGenerator[RSSResult, None]: An async generator of parsed results.
+        """
+        base_url = "https://rss.arxiv.org"
+        if feed_type.upper() == "ATOM":
+            feed_url = f"{base_url}/atom/{query}"
+        elif feed_type.upper() == "RSS":
+            feed_url = f"{base_url}/rss/{query}"
+        else:
+            raise ValueError("Invalid feed type. Use 'RSS' or 'ATOM'.")
+
+        if max_results and max_results <= 0:
+            return
+
+        async for result in self._rss_results(feed_url):
+            if max_results is not None:
+                max_results -= 1
+                if max_results < 0:
+                    break
+            yield result
+
+    async def _rss_results(self, feed_url: str) -> AsyncGenerator[RSSResult, None]:
+        """
+        Fetches and parses an RSS or ATOM feed from the given URL.
+
+        Args:
+            feed_url (str): The full URL to the RSS/ATOM feed.
+
+        Returns:
+            AsyncGenerator[RSSResult, None]: An async generator of parsed results.
+        """
+        if not self._session:
+            raise RuntimeError("Client session not initialized. Use async context manager.")
+
+        page_url = URL(feed_url)
+        feed = await self._parse_feed(page_url, first_page=True)
+        if not feed.entries:
+            logger.info("Got empty first page; stopping generation")
+            return
+
+        logger.info(
+            "Got RSS feed: %d / 2000 results",
+            len(feed.entries),
+        )
+
+        for entry in feed.entries:
+            try:
+                yield RSSResult._from_feed_entry(entry)
+            except RSSResult.MissingFieldError as e:
+                logger.warning("Skipping partial result: %s", e)
 
 
 class ArxivError(Exception):
@@ -843,5 +1039,5 @@ class HTTPError(ArxivError):
 
 
 def _classname(o):
-    """A helper function for use in __repr__ methods: arxiv.Result.Link."""
+    """A helper function for use in __repr__ methods: arxiv.BaseResult.Link."""
     return "arxiv.{}".format(o.__class__.__qualname__)

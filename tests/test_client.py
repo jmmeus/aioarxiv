@@ -6,6 +6,7 @@ from typing import List
 from pytest import approx
 import aiohttp
 import asyncio
+import os
 
 
 def session_with_empty_response(code: int) -> AsyncMock:
@@ -19,6 +20,70 @@ def session_with_empty_response(code: int) -> AsyncMock:
     # Create a mock content with read method
     mock_content = AsyncMock()
     mock_content.read = AsyncMock(return_value=b"")
+    mock_response.content = mock_content
+
+    # Configure the mock session's get method to return the mock response
+    mock_session.get.return_value.__aenter__.return_value = mock_response
+
+    return mock_session
+
+
+def load_mock_feed(filename: str) -> str:
+    """
+    Load mock RSS feed content from a file in the mock_feeds directory.
+
+    Args:
+        filename (str): Name of the file to load
+
+    Returns:
+        str: Content of the mock feed file
+    """
+    path = os.path.join("./tests/mock_feeds/", filename)
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Mock feed file not found: {path}")
+    except Exception as e:
+        raise Exception(f"Error loading mock feed file: {e}")
+
+
+def session_with_mock_feed(feed_type: str = "valid", code: int = 200) -> AsyncMock:
+    """
+    Create a mock ClientSession that returns content from a mock feed file.
+
+    Args:
+        feed_type (str): Type of feed to mock ("valid", "empty", or "error")
+        code (int): HTTP status code to return in the mock response
+
+    Returns:
+        AsyncMock: Configured mock session
+    """
+    # Map feed types to filenames
+    feed_files = {
+        "valid": "rss_mock_feed.xml",
+        "empty": "empty_rss_mock_feed.xml",
+        "error": "error_rss_mock_feed.xml",
+    }
+
+    filename = feed_files.get(feed_type)
+    if not filename:
+        raise ValueError(
+            f"Invalid feed type: {feed_type}. Must be one of {list(feed_files.keys())}"
+        )
+
+    # Create a mock ClientSession
+    mock_session = AsyncMock(spec=aiohttp.ClientSession)
+
+    # Create a mock response
+    mock_response = AsyncMock(spec=aiohttp.ClientResponse)
+    mock_response.status = code
+
+    # Load and set the appropriate mock content
+    content = load_mock_feed(filename)
+    mock_content = AsyncMock()
+    mock_content.read = AsyncMock(return_value=content.encode("utf-8"))
     mock_response.content = mock_content
 
     # Configure the mock session's get method to return the mock response
@@ -50,6 +115,23 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
                 async for r in client.results(aioarxiv.Search(id_list=["0808.05394", "1707.08567"]))
             ]
             self.assertEqual(len(results), 1)
+
+    async def test_invalid_rss_feed(self):
+        mock_session = session_with_mock_feed("error")
+        async with aioarxiv.Client() as client:
+            with patch.object(client, "_session", mock_session):
+                # Assert thrown error is handled and hidden by generator.
+                results = [r async for r in client.get_feed("test")]
+                self.assertEqual(len(results), 0)
+
+    async def test_empty_rss_feed(self):
+        # Feeds are empty on weekends + arXiv holidays.
+        mock_session = session_with_mock_feed("empty")
+        async with aioarxiv.Client() as client:
+            with patch.object(client, "_session", mock_session):
+                # Assert thrown error is handled and hidden by generator.
+                results = [r async for r in client.get_feed("test")]
+                self.assertEqual(len(results), 0)
 
     async def test_max_results(self):
         async with aioarxiv.Client(page_size=10) as client:
@@ -141,7 +223,31 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
                         await broken_get()
                         self.fail("broken_get didn't throw HTTPError")
                     except aioarxiv.HTTPError as e:
-                        print("personalprinte", e)
+                        self.assertEqual(e.status, 500)
+                        self.assertEqual(e.retry, broken_client.num_retries)
+
+    @patch("asyncio.sleep", return_value=None)
+    async def test_retry_rss_feed(self, mock_sleep):
+        # Create a mock ClientSession
+        mock_session = session_with_mock_feed("valid", code=500)
+
+        async with aioarxiv.Client() as broken_client:
+            # Patch the ClientSession creation in the Client class
+            with patch.object(broken_client, "_session", mock_session):
+
+                async def broken_get():
+                    async for r in broken_client.get_feed("testing"):
+                        return r
+
+                with self.assertRaises(aioarxiv.HTTPError):
+                    await broken_get()
+
+                for num_retries in [2, 5]:
+                    broken_client.num_retries = num_retries
+                    try:
+                        await broken_get()
+                        self.fail("broken_get didn't throw HTTPError")
+                    except aioarxiv.HTTPError as e:
                         self.assertEqual(e.status, 500)
                         self.assertEqual(e.retry, broken_client.num_retries)
 
@@ -318,3 +424,34 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
                     2.9,  # Allowing slight tolerance under 3 seconds
                     f"Requests {i-1} and {i} were too close: {time_diff} seconds",
                 )
+
+    async def test_live_concurrent_rss_feed_requests(self):
+        mock_session = session_with_mock_feed("valid")
+        async with aioarxiv.Client() as client:
+            with patch.object(client, "_session", mock_session):
+                request_times: List[datetime] = []
+
+                async def make_request(query):
+                    results = [r async for r in client.get_feed(query)]
+                    request_times.append(datetime.now())
+                    return results
+
+                # Perform 3 concurrent requests
+                results = await asyncio.gather(
+                    make_request("astro-ph.CO"),
+                    make_request("math"),
+                    make_request("cs.AI astro-ph.CO"),
+                )
+
+                # Verify results
+                for result_list in results:
+                    self.assertTrue(len(result_list) > 0)
+
+                # Check timing between requests
+                for i in range(1, len(request_times)):
+                    time_diff = (request_times[i] - request_times[i - 1]).total_seconds()
+                    self.assertGreaterEqual(
+                        time_diff,
+                        2.9,  # Allowing slight tolerance under 3 seconds
+                        f"Requests {i-1} and {i} were too close: {time_diff} seconds",
+                    )

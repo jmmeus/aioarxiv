@@ -1,9 +1,13 @@
 source := ${wildcard ./aioarxiv/*.py}
 tests := ${wildcard tests/*.py}
 
-.PHONY: all lint test audit docs clean
+.PHONY: all lint test audit docs clean install_deps
 
-all: lint test docs
+all: install_deps lint test docs
+
+install_deps:
+	python -m pip install --upgrade pip
+	pip install -e ".[dev]"
 
 format: $(source) $(tests)
 	ruff format .
@@ -14,7 +18,7 @@ lint: $(source) $(tests)
 test: $(source) $(tests)
 	pytest
 
-audit:
+audit: install_deps
 	python -m pip_audit --strict --requirement requirements.txt
 
 docs: docs/index.html

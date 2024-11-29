@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 version = "1.1.1"
 
@@ -8,12 +8,10 @@ with open("README.md", "r") as fh:
 setup(
     name="aioarxiv",
     version=version,
-    packages=["aioarxiv"],
-    # dependencies
+    packages=find_packages(include=["aioarxiv", "aioarxiv.*"]),
     python_requires=">=3.8",
     install_requires=["feedparser~=6.0.10", "aiohttp>=3.8.1"],
     tests_require=["pytest", "pdoc", "ruff"],
-    # metadata for upload to PyPI
     author="Maurice Meus",
     author_email="mauricemeus@gmail.com",
     description="Asynchronous Python wrapper for the arXiv API: https://arxiv.org/help/api/",

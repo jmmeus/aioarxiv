@@ -27,8 +27,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install python3-dev gcc
         pip install wheel setuptools
-        pip install -e .
+        pip install -e ".[dev]"  # Install editable package with dev dependencies
     - name: Test with pytest
       run: |
-        pip install pytest
         make -B test

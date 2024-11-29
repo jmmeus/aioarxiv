@@ -11,7 +11,9 @@ setup(
     packages=find_packages(include=["aioarxiv", "aioarxiv.*"]),
     python_requires=">=3.8",
     install_requires=["feedparser~=6.0.10", "aiohttp>=3.8.1"],
-    tests_require=["pytest", "pdoc", "ruff"],
+    extras_require={
+        "dev": ["pytest", "pdoc", "ruff"],
+    },
     author="Maurice Meus",
     author_email="mauricemeus@gmail.com",
     description="Asynchronous Python wrapper for the arXiv API: https://arxiv.org/help/api/",

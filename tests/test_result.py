@@ -181,7 +181,7 @@ class TestResult(unittest.IsolatedAsyncioTestCase):
         paper_published = "2016-05-26T17:59:46Z"
         paper_published_parsed = time.struct_time((2016, 5, 26, 17, 59, 46, 3, 147, 0))
         expected = datetime(2016, 5, 26, hour=17, minute=59, second=46, tzinfo=timezone.utc)
-        actual = aioarxiv.BaseResult._to_datetime(paper_published_parsed)
+        actual = aioarxiv.models.utilities._to_datetime(paper_published_parsed)
         self.assertEqual(actual, expected)
         self.assertEqual(actual.strftime("%Y-%m-%dT%H:%M:%SZ"), paper_published)
 

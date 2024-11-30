@@ -41,19 +41,16 @@ import asyncio
 import aioarxiv
 
 async def main():
-    # Initialise the asyncronous API client.
-    client = aioarxiv.Client()
-
     # Search for the 10 most recent articles matching the keyword "quantum"
-    search = aioarxiv.Search(
+    search = aioarxiv.SearchQuery(
         query="quantum",
         max_results=10,
         sort_by=aioarxiv.SortCriterion.SubmittedDate
     )
 
-    # Fetch results asynchronously
-    async with client as _client:
-        results = _client.results(search)
+    # Initialize the asynchronous API client and fetch results asynchronously
+    async with aioarxiv.Client() as client:
+        results = client.results(search)
 
         # Results is an AsyncGenerator, we iterate through the elements
         async for result in results:
@@ -88,19 +85,19 @@ async def main():
 
     async with client as _client:
         # Advanced query searching by author and title
-        search = aioarxiv.Search(query="au:del_maestro AND ti:checkerboard")
+        search = aioarxiv.SearchQuery(query="au:del_maestro AND ti:checkerboard")
         results = _client.results(search)
         first_result = await results.__anext__()
         print(first_result)
 
         # Search by specific paper ID
-        search_by_id = aioarxiv.Search(id_list=["1605.08386v1"])
+        search_by_id = aioarxiv.SearchQuery(id_list=["1605.08386v1"])
         results = _client.results(search_by_id)
         paper = await results.__anext__()
         print(paper.title)
 
         # Iterate through all results
-        search = aioarxiv.Search(query="quantum", max_results=100)
+        search = aioarxiv.SearchQuery(query="quantum", max_results=100)
         async for result in _client.results(search):
             print(result.title)
 
@@ -114,11 +111,11 @@ import asyncio
 import aioarxiv
 
 async def main():
-    # Initialise the asyncronous API client.
+    # Initialize the asynchronous API client
     client = aioarxiv.Client()
 
     # Download a paper by ID
-    search = aioarxiv.Search(id_list=["1605.08386v1"])
+    search = aioarxiv.SearchQuery(id_list=["1605.08386v1"])
     async with client as _client:
         results = _client.results(search)
         paper = await results.__anext__()
@@ -154,21 +151,22 @@ async def main():
     client = aioarxiv.Client()
 
     async with client as _client:
-        # Get the most recent entries from the RSS feed
-        feed_results = _client.get_feed("astro-ph")
+        # Get the most recent entries from the RSS feed using RSSQuery
+        feed_query = aioarxiv.RSSQuery(query="astro-ph")
+        feed_results = _client.results(feed_query)
         
         # Iterate through feed entries
         async for entry in feed_results:
             # Contains largely the same metadata as search results
-            # Also inlcudes announcement type info to filter for
+            # Also includes announcement type info to filter for
             # only new (not updated or cross-posted) entries
             if entry.announce_type == aioarxiv.AnnounceType.New:
                 # Print only info for new publications
                 print(entry.entry_id, entry.title, entry.authors)
 
         # Limit the number of results
-        limited_feed = _client.get_feed("astro-ph", max_results=5)
-        feed_entries = [entry async for entry in limited_feed]
+        limited_feed = aioarxiv.RSSQuery(query="astro-ph", max_results=5)
+        feed_entries = [entry async for entry in _client.results(limited_feed)]
 
         # Get first entry using anext
         first_entry = await anext(feed_results)
@@ -197,11 +195,13 @@ logging.basicConfig(level=logging.DEBUG)
 
 ## Types
 
-- `Client`: Configurable async client for fetching results and RSS feeds
-- `Search`: Defines search parameters for arXiv database
-- `BaseResult`: Base class for results, not intended to be instantiated by the user.
-- `SearchResult`: Represents paper metadata with download methods. The meaning of the underlying raw data is documented in the [arXiv API User Manual: Details of Atom Results Returned](https://arxiv.org/help/api/user-manual#_details_of_atom_results_returned).
-- `RSSResult`: Represents RSS feed paper metadata with download methods. The meaning of the underlying raw data is documented in the [arXiv info: RSS feed Specifications](https://info.arxiv.org/help/rss_specifications.html).
+- `Client`: Configurable async client for fetching results from both arXiv API and RSS feeds
+- `BaseQuery`: Base class for queries, not intended to be instantiated by the user
+- `SearchQuery`: Defines search parameters for arXiv database queries
+- `RSSQuery`: Defines parameters for RSS feed queries
+- `BaseResult`: Base class for results, not intended to be instantiated by the user
+- `SearchResult`: Represents paper metadata from arXiv API searches with download methods. The meaning of the underlying raw data is documented in the [arXiv API User Manual: Details of Atom Results Returned](https://arxiv.org/help/api/user-manual#_details_of_atom_results_returned)
+- `RSSResult`: Represents RSS feed paper metadata with download methods. The meaning of the underlying raw data is documented in the [arXiv info: RSS feed Specifications](https://info.arxiv.org/help/rss_specifications.html)
 
 ## Contributing
 

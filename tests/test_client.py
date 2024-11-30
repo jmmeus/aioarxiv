@@ -96,23 +96,24 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_format_id(self):
         with self.assertRaises(aioarxiv.HTTPError):
             async with aioarxiv.Client(num_retries=0) as _client:
-                async for _r in _client.results(aioarxiv.Search(id_list=["abc"])):
+                async for _r in _client.results(aioarxiv.SearchQuery(id_list=["abc"])):
                     pass
 
     async def test_invalid_id(self):
         async with aioarxiv.Client(num_retries=0) as _client:
-            results = [r async for r in _client.results(aioarxiv.Search(id_list=["0000.0000"]))]
+            results = [r async for r in _client.results(aioarxiv.SearchQuery(id_list=["0000.0000"]))]
             self.assertEqual(len(results), 0)
 
     async def test_nonexistent_id_in_list(self):
         async with aioarxiv.Client() as client:
             # Assert thrown error is handled and hidden by generator.
-            results = [r async for r in client.results(aioarxiv.Search(id_list=["0808.05394"]))]
+            results = [r async for r in client.results(aioarxiv.SearchQuery(id_list=["0808.05394"]))]
             self.assertEqual(len(results), 0)
             # Generator should still yield valid entries.
             results = [
-                r
-                async for r in client.results(aioarxiv.Search(id_list=["0808.05394", "1707.08567"]))
+                r async for r in client.results(
+                    aioarxiv.SearchQuery(id_list=["0808.05394", "1707.08567"])
+                )
             ]
             self.assertEqual(len(results), 1)
 
@@ -121,7 +122,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         async with aioarxiv.Client() as client:
             with patch.object(client, "_session", mock_session):
                 # Assert thrown error is handled and hidden by generator.
-                results = [r async for r in client.get_feed("test")]
+                results = [r async for r in client.results(aioarxiv.RSSQuery("test"))]
                 self.assertEqual(len(results), 0)
 
     async def test_empty_rss_feed(self):
@@ -130,19 +131,19 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         async with aioarxiv.Client() as client:
             with patch.object(client, "_session", mock_session):
                 # Assert thrown error is handled and hidden by generator.
-                results = [r async for r in client.get_feed("test")]
+                results = [r async for r in client.results(aioarxiv.RSSQuery("test"))]
                 self.assertEqual(len(results), 0)
 
     async def test_max_results(self):
         async with aioarxiv.Client(page_size=10) as client:
-            search = aioarxiv.Search(query="testing", max_results=2)
+            search = aioarxiv.SearchQuery(query="testing", max_results=2)
             results = [r async for r in client.results(search)]
             self.assertEqual(len(results), 2)
 
     async def test_query_page_count(self):
         async with aioarxiv.Client(page_size=10) as client:
             client._parse_feed = MagicMock(wraps=client._parse_feed)
-            generator = client.results(aioarxiv.Search(query="testing", max_results=55))
+            generator = client.results(aioarxiv.SearchQuery(query="testing", max_results=55))
             results = [r async for r in generator]
 
             # NOTE: don't directly assert on call count; allow for retries.
@@ -166,7 +167,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
 
     async def test_offset(self):
         max_results = 10
-        search = aioarxiv.Search(query="testing", max_results=max_results)
+        search = aioarxiv.SearchQuery(query="testing", max_results=max_results)
         async with aioarxiv.Client(page_size=10) as client:
             default = [r async for r in client.results(search)]
             no_offset = [r async for r in client.results(search)]
@@ -179,10 +180,27 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             offset_above_max_results = [r async for r in client.results(search, offset=max_results)]
             self.assertListEqual(offset_above_max_results, [])
 
+    async def test_rss_offset(self):
+        max_results = 10
+        mock_session = session_with_mock_feed("valid")
+        search = aioarxiv.RSSQuery(query="test", max_results=max_results)
+        async with aioarxiv.Client(page_size=10) as client:
+            with patch.object(client, "_session", mock_session):
+                default = [r async for r in client.results(search)]
+                no_offset = [r async for r in client.results(search)]
+                self.assertListEqual(default, no_offset)
+
+                offset = max_results // 2
+                half_offset = [r async for r in client.results(search, offset=offset)]
+                self.assertListEqual(default[offset:], half_offset)
+
+                offset_above_max_results = [r async for r in client.results(search, offset=max_results)]
+                self.assertListEqual(offset_above_max_results, [])
+
     async def test_search_results_offset(self):
         # NOTE: page size is irrelevant here.
         async with aioarxiv.Client(page_size=15) as client:
-            search = aioarxiv.Search(query="testing", max_results=10)
+            search = aioarxiv.SearchQuery(query="testing", max_results=10)
             all_results = [r async for r in client.results(search, offset=0)]
             self.assertEqual(len(all_results), 10)
 
@@ -192,8 +210,23 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
                 if client_results:
                     self.assertEqual(all_results[offset].entry_id, client_results[0].entry_id)
 
+    async def test_rss_results_offset(self):
+        # NOTE: page size is irrelevant here.
+        mock_session = session_with_mock_feed("valid")
+        async with aioarxiv.Client(page_size=15) as client:
+            with patch.object(client, "_session", mock_session):
+                search = aioarxiv.RSSQuery(query="test", max_results=10)
+                all_results = [r async for r in client.results(search, offset=0)]
+                self.assertEqual(len(all_results), 10)
+
+                for offset in [0, 5, 9, 10, 11]:
+                    client_results = [r async for r in client.results(search, offset=offset)]
+                    self.assertEqual(len(client_results), max(0, search.max_results - offset))
+                    if client_results:
+                        self.assertEqual(all_results[offset].entry_id, client_results[0].entry_id)
+
     async def test_no_duplicates(self):
-        search = aioarxiv.Search("testing", max_results=100)
+        search = aioarxiv.SearchQuery("testing", max_results=100)
         ids = set()
         async with aioarxiv.Client() as client:
             async for r in client.results(search):
@@ -210,7 +243,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             with patch.object(broken_client, "_session", mock_session):
 
                 async def broken_get():
-                    search = aioarxiv.Search(query="quantum")
+                    search = aioarxiv.SearchQuery(query="quantum")
                     async for r in broken_client.results(search):
                         return r
 
@@ -230,13 +263,14 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
     async def test_retry_rss_feed(self, mock_sleep):
         # Create a mock ClientSession
         mock_session = session_with_mock_feed("valid", code=500)
+        query = aioarxiv.RSSQuery("test")
 
         async with aioarxiv.Client() as broken_client:
             # Patch the ClientSession creation in the Client class
             with patch.object(broken_client, "_session", mock_session):
 
                 async def broken_get():
-                    async for r in broken_client.get_feed("testing"):
+                    async for r in broken_client.results(query):
                         return r
 
                 with self.assertRaises(aioarxiv.HTTPError):
@@ -259,7 +293,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         async with aioarxiv.Client() as client:
             # Patch the ClientSession creation in the Client class
             with patch.object(client, "_session", mock_session):
-                url = client._format_url(aioarxiv.Search(query="quantum"), 0, 1)
+                url = client._format_url(aioarxiv.SearchQuery(query="quantum"), 0, 1)
                 # A client should sleep until delay_seconds have passed.
                 await client._parse_feed(url)
                 mock_sleep.assert_not_called()
@@ -277,8 +311,8 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         async with aioarxiv.Client() as client:
             # Patch the ClientSession creation in the Client class
             with patch.object(client, "_session", mock_session):
-                url1 = client._format_url(aioarxiv.Search(query="quantum"), 0, 1)
-                url2 = client._format_url(aioarxiv.Search(query="testing"), 0, 1)
+                url1 = client._format_url(aioarxiv.SearchQuery(query="quantum"), 0, 1)
+                url2 = client._format_url(aioarxiv.SearchQuery(query="testing"), 0, 1)
                 # Rate limiting is URL-independent; expect same behavior as in
                 # `test_sleep_standard`.
                 await client._parse_feed(url1)
@@ -294,7 +328,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         async with aioarxiv.Client() as client:
             # Patch the ClientSession creation in the Client class
             with patch.object(client, "_session", mock_session):
-                url = client._format_url(aioarxiv.Search(query="quantum"), 0, 1)
+                url = client._format_url(aioarxiv.SearchQuery(query="quantum"), 0, 1)
                 # If _last_request_dt is less than delay_seconds ago, sleep.
                 client.rate_limiter._last_request_dt = datetime.now() - timedelta(
                     seconds=client.delay_seconds - 1
@@ -317,7 +351,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         async with aioarxiv.Client(delay_seconds=0) as client:
             # Patch the ClientSession creation in the Client class
             with patch.object(client, "_session", mock_session):
-                url = client._format_url(aioarxiv.Search(query="quantum"), 0, 1)
+                url = client._format_url(aioarxiv.SearchQuery(query="quantum"), 0, 1)
                 await client._parse_feed(url)
                 await client._parse_feed(url)
                 mock_sleep.assert_not_called()
@@ -329,7 +363,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         async with aioarxiv.Client() as client:
             # Patch the ClientSession creation in the Client class
             with patch.object(client, "_session", mock_session):
-                url = client._format_url(aioarxiv.Search(query="quantum"), 0, 1)
+                url = client._format_url(aioarxiv.SearchQuery(query="quantum"), 0, 1)
                 try:
                     await client._parse_feed(url)
                 except aioarxiv.HTTPError:
@@ -352,7 +386,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             # Patch the session
             with patch.object(client, "_session", mock_session):
                 # Simulate many concurrent requests
-                search = aioarxiv.Search(query="test", max_results=10)
+                search = aioarxiv.SearchQuery(query="test", max_results=10)
 
                 # List to store request times
                 request_times: List[datetime] = []
@@ -400,7 +434,7 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             request_times: List[datetime] = []
 
             async def make_request(query):
-                search = aioarxiv.Search(query=query, max_results=1)
+                search = aioarxiv.SearchQuery(query=query, max_results=1)
                 results = [r async for r in client.results(search)]
                 request_times.append(datetime.now())
                 return results
@@ -432,7 +466,8 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
                 request_times: List[datetime] = []
 
                 async def make_request(query):
-                    results = [r async for r in client.get_feed(query)]
+                    rss_query = aioarxiv.RSSQuery(query)
+                    results = [r async for r in client.results(rss_query)]
                     request_times.append(datetime.now())
                     return results
 

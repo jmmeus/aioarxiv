@@ -5,34 +5,21 @@ from typing import Optional
 import feedparser
 import re
 import logging
-import math
 from typing import List, Dict
 
-from aioarxiv.models import BaseResult
+from aioarxiv.models import BaseResult, BaseQuery
 from aioarxiv.models.enums import SortCriterion, SortOrder
 from aioarxiv.models.utilities import _classname, _to_datetime, _DEFAULT_TIME
 
 logger = logging.getLogger(__name__)
 
-
-class Search(object):
+class SearchQuery(BaseQuery):
     """
     A specification for a search of arXiv's database.
 
-    To run a search, use `Search.run` to use a default client or `Client.run`
-    with a specific client.
+    To run a query, use `Client.results` with an instantiated client.
     """
 
-    query: str
-    """
-    A query string.
-
-    This should be unencoded. Use `au:del_maestro AND ti:checkerboard`, not
-    `au:del_maestro+AND+ti:checkerboard`.
-
-    See [the arXiv API User's Manual: Details of Query
-    Construction](https://arxiv.org/help/api/user-manual#query_details).
-    """
     id_list: List[str]
     """
     A list of arXiv article IDs to which to limit the search.
@@ -40,13 +27,6 @@ class Search(object):
     See [the arXiv API User's
     Manual](https://arxiv.org/help/api/user-manual#search_query_and_id_list)
     for documentation of the interaction between `query` and `id_list`.
-    """
-    max_results: Optional[int]
-    """
-    The maximum number of results to be returned in an execution of this
-    search. To fetch every result available, set `max_results=None`.
-
-    The API's limit is 300,000 results per query.
     """
     sort_by: SortCriterion
     """The sort criterion for results."""
@@ -64,19 +44,13 @@ class Search(object):
         """
         Constructs an arXiv API search with the specified criteria.
         """
-        self.query = query
+        super().__init__(query=query, max_results=max_results)
         self.id_list = id_list
-        # Handle deprecated v1 default behavior.
-        self.max_results = None if max_results == math.inf else max_results
         self.sort_by = sort_by
         self.sort_order = sort_order
 
-    def __str__(self) -> str:
-        # TODO: develop a more informative string representation.
-        return repr(self)
-
     def __repr__(self) -> str:
-        return ("{}(query={}, id_list={}, max_results={}, sort_by={}, " "sort_order={})").format(
+        return ("{}(query={}, id_list={}, max_results={}, sort_by={}, sort_order={})").format(
             _classname(self),
             repr(self.query),
             repr(self.id_list),
@@ -96,7 +70,6 @@ class Search(object):
             "sortBy": self.sort_by.value,
             "sortOrder": self.sort_order.value,
         }
-
 
 class SearchResult(BaseResult):
     """
@@ -120,11 +93,19 @@ class SearchResult(BaseResult):
 
     def __init__(
         self,
+        entry_id: str,
         updated: datetime = _DEFAULT_TIME,
         published: datetime = _DEFAULT_TIME,
         comment: str = "",
         primary_category: str = "",
-        **kwargs,
+        title: str = "",
+        authors: List[BaseResult.Author] = [],
+        summary: str = "",
+        journal_ref: str = "",
+        doi: str = "",
+        categories: List[str] = [],
+        links: List[BaseResult.Link] = [],
+        _raw: feedparser.FeedParserDict = None,
     ):
         """
         Constructs an arXiv search result item.
@@ -137,7 +118,17 @@ class SearchResult(BaseResult):
         self.published = published
         self.comment = comment
         self.primary_category = primary_category
-        super().__init__(**kwargs)
+        super().__init__(
+            entry_id=entry_id,
+            title=title,
+            authors=authors,
+            summary=summary,
+            journal_ref=journal_ref,
+            doi=doi,
+            categories=categories,
+            links=links,
+            _raw=_raw
+        )
 
     @classmethod
     def _from_feed_entry(cls, entry: feedparser.FeedParserDict) -> SearchResult:

@@ -102,7 +102,7 @@ class TestRefCountDecorator(unittest.IsolatedAsyncioTestCase):
 
         async def get_results(client: aioarxiv.Client):
             async with client:
-                search = aioarxiv.Search("quantum computing", max_results=2)
+                search = aioarxiv.SearchQuery("quantum computing", max_results=2)
                 results = [r async for r in client.results(search)]
                 result_ids.extend([r.get_short_id() for r in results])
                 return results

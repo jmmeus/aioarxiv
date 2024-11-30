@@ -122,7 +122,7 @@ class TestResult(unittest.IsolatedAsyncioTestCase):
 
     async def test_search_result_shape(self):
         max_results = 100
-        search = aioarxiv.Search("testing", max_results=max_results)
+        search = aioarxiv.SearchQuery("testing", max_results=max_results)
         async with self.client as _client:
             results = [r async for r in _client.results(search)]
             self.assertEqual(len(results), max_results)
@@ -134,7 +134,8 @@ class TestResult(unittest.IsolatedAsyncioTestCase):
         mock_session = session_with_mock_feed("valid")
         async with self.client as _client:
             with patch.object(_client, "_session", mock_session):
-                results = [r async for r in _client.get_feed("test", max_results=max_results)]
+                query = aioarxiv.RSSQuery("test", max_results=max_results)
+                results = [r async for r in _client.results(query)]
                 self.assertEqual(len(results), max_results)
                 for result in results:
                     self.assert_valid_rss_result(result)
@@ -163,13 +164,13 @@ class TestResult(unittest.IsolatedAsyncioTestCase):
         result_id = "1707.08567"
         mock_session = session_with_mock_feed("valid")
         async with self.client as _client:
-            result = await _client.results(aioarxiv.Search(id_list=[result_id])).__anext__()
+            result = await _client.results(aioarxiv.SearchQuery(id_list=[result_id])).__anext__()
             got = result.get_short_id()
             self.assertTrue(got.startswith(result_id))
             # Should be of form `1707.08567v1`.
             self.assertTrue(re.match(r"^{}v\d+$".format(result_id), got))
             with patch.object(_client, "_session", mock_session):
-                result_rss = await _client.get_feed("test").__anext__()
+                result_rss = await _client.results(aioarxiv.RSSQuery("test")).__anext__()
                 got_rss = result_rss.get_short_id()
                 self.assertTrue(re.match(r"\d{4}\.\d{5}(v\d+)?", got_rss))
 
@@ -214,5 +215,5 @@ class TestResult(unittest.IsolatedAsyncioTestCase):
     async def test_legacy_ids(self):
         full_legacy_id = "quant-ph/0201082v1"
         async with self.client as _client:
-            result = await _client.results(aioarxiv.Search(id_list=[full_legacy_id])).__anext__()
+            result = await _client.results(aioarxiv.SearchQuery(id_list=[full_legacy_id])).__anext__()
             self.assertEqual(result.get_short_id(), full_legacy_id)

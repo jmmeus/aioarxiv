@@ -324,3 +324,47 @@ class BaseResult(object):
 
         def __repr__(self) -> str:
             return f"{self.__class__.__name__}({repr(self.missing_field)})"
+
+class BaseQuery(object):
+    """
+    A base object for a query of arXiv's database.
+
+    To run a query, use `Client.results` with an instantiated client.
+    """
+
+    query: str
+    """
+    A query string.
+
+    This should be unencoded. Use `au:del_maestro AND ti:checkerboard`, not
+    `au:del_maestro+AND+ti:checkerboard`.
+
+    See [the arXiv API User's Manual: Details of Query
+    Construction](https://arxiv.org/help/api/user-manual#query_details) for Search
+    queries.
+
+    see [the arXiv RSS news feeds](https://info.arxiv.org/help/rss.html) for RSS
+    queries.
+    """
+    max_results: Optional[int]
+    """
+    The maximum number of results to be returned in an execution of this
+    query. To fetch every result available, set `max_results=None`.
+
+    The API's limit is 300,000 results per query for Searches, and 2,000 for RSS feeds.
+    """
+
+    def __init__(
+        self,
+        query: str = "",
+        max_results: Optional[int] = None,
+    ):
+        """
+        Constructs an arXiv API query with the specified criteria.
+        """
+        self.query = query
+        self.max_results = max_results
+
+    def __str__(self) -> str:
+        # TODO: develop a more informative string representation.
+        return repr(self)

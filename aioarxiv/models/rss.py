@@ -4,13 +4,49 @@ from datetime import datetime
 import feedparser
 import re
 import logging
+from typing import Literal, Optional, List
 
-from aioarxiv.models import BaseResult
+from aioarxiv.models import BaseResult, BaseQuery
 from aioarxiv.models.enums import AnnounceType
 from aioarxiv.models.utilities import _classname, _to_datetime, _DEFAULT_TIME
 
 logger = logging.getLogger(__name__)
 
+ArXivFeed = Literal["RSS", "ATOM"]
+
+class RSSQuery(BaseQuery):
+    """
+    A specification to query arXiv's RSS feed.
+
+    To run a query, use `Client.results` with an instantiated client.
+    """
+
+    feed: ArXivFeed
+    """The feed type to query."""
+
+    def __init__(
+        self,
+        query: str = "",
+        max_results: Optional[int] = None,
+        feed: ArXivFeed = "RSS",
+    ):
+        """
+        Constructs an arXiv RSS feed with the specified criteria.
+        """
+        # Validate that the feed is one of the accepted values
+        if feed not in ("RSS", "ATOM"):
+            raise ValueError(f"Invalid feed type: {feed}. Must be 'RSS' or 'ATOM'.")
+
+        super().__init__(query=query, max_results=max_results)
+        self.feed = feed
+
+    def __repr__(self) -> str:
+        return ("{}(query={}, feed={}, max_results={})").format(
+            _classname(self),
+            repr(self.query),
+            repr(self.feed),
+            repr(self.max_results),
+        )
 
 class RSSResult(BaseResult):
     """
@@ -30,9 +66,17 @@ class RSSResult(BaseResult):
 
     def __init__(
         self,
+        entry_id: str,
         announce_type: AnnounceType = None,
         feed_date: datetime = _DEFAULT_TIME,
-        **kwargs,
+        title: str = "",
+        authors: List[BaseResult.Author] = [],
+        summary: str = "",
+        journal_ref: str = "",
+        doi: str = "",
+        categories: List[str] = [],
+        links: List[BaseResult.Link] = [],
+        _raw: feedparser.FeedParserDict = None,
     ):
         """
         Constructs an arXiv RSS feed result item.
@@ -42,7 +86,17 @@ class RSSResult(BaseResult):
         """
         self.announce_type = announce_type
         self.feed_date = feed_date
-        super().__init__(**kwargs)
+        super().__init__(
+            entry_id=entry_id,
+            title=title,
+            authors=authors,
+            summary=summary,
+            journal_ref=journal_ref,
+            doi=doi,
+            categories=categories,
+            links=links,
+            _raw=_raw
+        )
 
     @classmethod
     def _from_feed_entry(cls, entry: feedparser.FeedParserDict) -> RSSResult:

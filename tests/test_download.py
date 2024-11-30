@@ -26,10 +26,10 @@ class TestDownload(unittest.IsolatedAsyncioTestCase):
         # https://docs.python.org/3/library/functions.html#anext
         async with self._client as client:
             self.fetched_result = await client.results(
-                aioarxiv.Search(id_list=["1605.08386"])
+                aioarxiv.SearchQuery(id_list=["1605.08386"])
             ).__anext__()
             self.fetched_result_with_slash = await client.results(
-                aioarxiv.Search(id_list=["hep-ex/0406020v1"])
+                aioarxiv.SearchQuery(id_list=["hep-ex/0406020v1"])
             ).__anext__()
 
         # Create temp directory

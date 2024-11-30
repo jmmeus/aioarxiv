@@ -24,7 +24,7 @@ class TestAPIBugs(unittest.IsolatedAsyncioTestCase):
                 results = [
                     r
                     async for r in arxivclient.results(
-                        aioarxiv.Search(id_list=[paper_without_title])
+                        aioarxiv.SearchQuery(id_list=[paper_without_title])
                     )
                 ]
                 self.assertEqual(len(results), 1)

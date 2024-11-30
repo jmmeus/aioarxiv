@@ -101,17 +101,22 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
 
     async def test_invalid_id(self):
         async with aioarxiv.Client(num_retries=0) as _client:
-            results = [r async for r in _client.results(aioarxiv.SearchQuery(id_list=["0000.0000"]))]
+            results = [
+                r async for r in _client.results(aioarxiv.SearchQuery(id_list=["0000.0000"]))
+            ]
             self.assertEqual(len(results), 0)
 
     async def test_nonexistent_id_in_list(self):
         async with aioarxiv.Client() as client:
             # Assert thrown error is handled and hidden by generator.
-            results = [r async for r in client.results(aioarxiv.SearchQuery(id_list=["0808.05394"]))]
+            results = [
+                r async for r in client.results(aioarxiv.SearchQuery(id_list=["0808.05394"]))
+            ]
             self.assertEqual(len(results), 0)
             # Generator should still yield valid entries.
             results = [
-                r async for r in client.results(
+                r
+                async for r in client.results(
                     aioarxiv.SearchQuery(id_list=["0808.05394", "1707.08567"])
                 )
             ]
@@ -194,7 +199,9 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
                 half_offset = [r async for r in client.results(search, offset=offset)]
                 self.assertListEqual(default[offset:], half_offset)
 
-                offset_above_max_results = [r async for r in client.results(search, offset=max_results)]
+                offset_above_max_results = [
+                    r async for r in client.results(search, offset=max_results)
+                ]
                 self.assertListEqual(offset_above_max_results, [])
 
     async def test_search_results_offset(self):

@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 ArXivFeed = Literal["RSS", "ATOM"]
 
+
 class RSSQuery(BaseQuery):
     """
     A specification to query arXiv's RSS feed.
@@ -47,6 +48,7 @@ class RSSQuery(BaseQuery):
             repr(self.feed),
             repr(self.max_results),
         )
+
 
 class RSSResult(BaseResult):
     """
@@ -95,7 +97,7 @@ class RSSResult(BaseResult):
             doi=doi,
             categories=categories,
             links=links,
-            _raw=_raw
+            _raw=_raw,
         )
 
     @classmethod

@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 MAX_PAGE_SIZE = 2_000
 
+
 @refcount_context
 class Client(object):
     """
@@ -101,9 +102,7 @@ class Client(object):
         )
 
     async def results(
-        self,
-        query: Union[RSSQuery, SearchQuery],
-        offset: int = 0
+        self, query: Union[RSSQuery, SearchQuery], offset: int = 0
     ) -> AsyncGenerator[Union[SearchResult, RSSResult], None]:
         """
         Uses this client configuration to fetch results based on the query type.
@@ -141,10 +140,7 @@ class Client(object):
                 yield result
 
     async def _rss_results(
-        self,
-        query: RSSQuery,
-        offset: int,
-        limit: Optional[int]
+        self, query: RSSQuery, offset: int, limit: Optional[int]
     ) -> AsyncGenerator[RSSResult, None]:
         """
         Internal method to handle RSS feed results with offset support.
@@ -173,10 +169,7 @@ class Client(object):
                 logger.warning("Skipping partial RSS result: %s", e)
 
     async def _search_results(
-        self,
-        query: SearchQuery,
-        offset: int,
-        limit: Optional[int]
+        self, query: SearchQuery, offset: int, limit: Optional[int]
     ) -> AsyncGenerator[SearchResult, None]:
         """
         Internal method to handle Search API results with server-side pagination.
@@ -210,12 +203,7 @@ class Client(object):
             if current_offset >= total_results:
                 break
 
-    def _format_url(
-        self,
-        query: Union[RSSQuery, SearchQuery],
-        start: int,
-        page_size: int
-    ) -> str:
+    def _format_url(self, query: Union[RSSQuery, SearchQuery], start: int, page_size: int) -> str:
         """
         Construct a request URL for the query.
 
@@ -226,17 +214,16 @@ class Client(object):
             return URL(self.rss_url_format.format(query.feed.lower(), query.query))
 
         url_args = query._url_args()
-        url_args.update({
-            "start": start,
-            "max_results": page_size,
-        })
+        url_args.update(
+            {
+                "start": start,
+                "max_results": page_size,
+            }
+        )
         return URL(self.query_url_format).with_query(url_args)
 
     async def _parse_feed(
-        self,
-        url: str,
-        first_page: bool = True,
-        _try_index: int = 0
+        self, url: str, first_page: bool = True, _try_index: int = 0
     ) -> feedparser.FeedParserDict:
         """
         Fetches and parses the feed from the specified URL.
@@ -247,11 +234,7 @@ class Client(object):
         except (HTTPError, UnexpectedEmptyPageError, aiohttp.ClientError) as err:
             if _try_index < self.num_retries:
                 logger.debug("Got error (try %d): %s", _try_index, err)
-                return await self._parse_feed(
-                    url,
-                    first_page=first_page,
-                    _try_index=_try_index + 1
-                )
+                return await self._parse_feed(url, first_page=first_page, _try_index=_try_index + 1)
             logger.debug("Giving up (try %d): %s", _try_index, err)
             raise err
 
@@ -265,17 +248,9 @@ class Client(object):
         Helper method for _parse_feed that implements rate limiting.
         """
         async with self.rate_limiter.acquire():
-            logger.info(
-                "Requesting page (first: %r, try: %d): %s",
-                first_page,
-                try_index,
-                url
-            )
+            logger.info("Requesting page (first: %r, try: %d): %s", first_page, try_index, url)
 
-            async with self._session.get(
-                url,
-                headers={"user-agent": "aioarxiv/1.1.2"}
-            ) as resp:
+            async with self._session.get(url, headers={"user-agent": "aioarxiv/1.1.2"}) as resp:
                 if resp.status != 200:
                     raise HTTPError(url, try_index, resp.status)
 

@@ -13,6 +13,7 @@ from aioarxiv.models.utilities import _classname, _to_datetime, _DEFAULT_TIME
 
 logger = logging.getLogger(__name__)
 
+
 class SearchQuery(BaseQuery):
     """
     A specification for a search of arXiv's database.
@@ -71,6 +72,7 @@ class SearchQuery(BaseQuery):
             "sortOrder": self.sort_order.value,
         }
 
+
 class SearchResult(BaseResult):
     """
     An entry in an arXiv query results feed.
@@ -127,7 +129,7 @@ class SearchResult(BaseResult):
             doi=doi,
             categories=categories,
             links=links,
-            _raw=_raw
+            _raw=_raw,
         )
 
     @classmethod

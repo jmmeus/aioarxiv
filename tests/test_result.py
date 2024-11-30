@@ -215,5 +215,7 @@ class TestResult(unittest.IsolatedAsyncioTestCase):
     async def test_legacy_ids(self):
         full_legacy_id = "quant-ph/0201082v1"
         async with self.client as _client:
-            result = await _client.results(aioarxiv.SearchQuery(id_list=[full_legacy_id])).__anext__()
+            result = await _client.results(
+                aioarxiv.SearchQuery(id_list=[full_legacy_id])
+            ).__anext__()
             self.assertEqual(result.get_short_id(), full_legacy_id)

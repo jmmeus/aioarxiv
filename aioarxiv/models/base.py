@@ -325,6 +325,7 @@ class BaseResult(object):
         def __repr__(self) -> str:
             return f"{self.__class__.__name__}({repr(self.missing_field)})"
 
+
 class BaseQuery(object):
     """
     A base object for a query of arXiv's database.

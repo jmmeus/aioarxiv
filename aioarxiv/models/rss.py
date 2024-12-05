@@ -27,7 +27,7 @@ class RSSQuery(BaseQuery):
 
     def __init__(
         self,
-        query: str = "",
+        query: str,
         max_results: Optional[int] = None,
         id_list: List[str] = [],
         feed: ArXivFeed = "RSS",

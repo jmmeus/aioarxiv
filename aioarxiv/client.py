@@ -10,7 +10,7 @@ from aioarxiv.models import SearchResult, RSSResult, RSSQuery, SearchQuery
 from aioarxiv.errors import HTTPError, UnexpectedEmptyPageError
 from aioarxiv.rate_limiter import AsyncRateLimiter
 from aioarxiv.decorators import refcount_context
-from aioarxiv.models.utilities import _classname
+from aioarxiv.models.utilities import _classname, strip_arxiv_id_version
 
 logger = logging.getLogger(__name__)
 
@@ -143,28 +143,53 @@ class Client(object):
         self, query: RSSQuery, offset: int, limit: Optional[int]
     ) -> AsyncGenerator[RSSResult, None]:
         """
-        Internal method to handle RSS feed results with offset support.
+        Internal method to handle RSS feed results with offset support and ID filtering.
         RSS feeds are fetched in a single request and filtered in memory.
+
+        Args:
+            query: RSSQuery instance containing feed specification and optional id_list
+            offset: Number of results to skip
+            limit: Maximum number of results to return after offset and filtering
+
+        Yields:
+            RSSResult instances that match the query criteria (feed and optional id_list)
         """
         if not self._session:
             raise RuntimeError("Client session not initialized. Use async context manager.")
 
         url = self._format_url(query, 0, MAX_PAGE_SIZE)
-        print(url)
         feed = await self._parse_feed(url, first_page=True)
 
         if not feed.entries:
             logger.info("Got empty RSS feed; stopping generation")
             return
 
-        # Apply offset and limit in memory
-        entries = feed.entries[offset:]
-        if limit is not None:
-            entries = entries[:limit]
+        yielded_count = 0
+        skipped_count = 0
 
-        for entry in entries:
+        for entry in feed.entries:
             try:
-                yield RSSResult._from_feed_entry(entry)
+                result = RSSResult._from_feed_entry(entry)
+
+                # Skip if entry's ID isn't in the id_list (when id_list is specified)
+                if (
+                    query.id_list
+                    and strip_arxiv_id_version(result.get_short_id()) not in query.id_list
+                ):
+                    continue  # Stripping version number for consistency with Search API
+
+                # Handle offset
+                if skipped_count < offset:
+                    skipped_count += 1
+                    continue
+
+                # Handle limit
+                if limit is not None and yielded_count >= limit:
+                    return
+
+                yielded_count += 1
+                yield result
+
             except RSSResult.MissingFieldError as e:
                 logger.warning("Skipping partial RSS result: %s", e)
 
@@ -250,7 +275,7 @@ class Client(object):
         async with self.rate_limiter.acquire():
             logger.info("Requesting page (first: %r, try: %d): %s", first_page, try_index, url)
 
-            async with self._session.get(url, headers={"user-agent": "aioarxiv/1.1.2"}) as resp:
+            async with self._session.get(url, headers={"user-agent": "aioarxiv/1.1.3"}) as resp:
                 if resp.status != 200:
                     raise HTTPError(url, try_index, resp.status)
 

@@ -29,6 +29,7 @@ class RSSQuery(BaseQuery):
         self,
         query: str = "",
         max_results: Optional[int] = None,
+        id_list: List[str] = [],
         feed: ArXivFeed = "RSS",
     ):
         """
@@ -38,15 +39,16 @@ class RSSQuery(BaseQuery):
         if feed not in ("RSS", "ATOM"):
             raise ValueError(f"Invalid feed type: {feed}. Must be 'RSS' or 'ATOM'.")
 
-        super().__init__(query=query, max_results=max_results)
+        super().__init__(query=query, max_results=max_results, id_list=id_list)
         self.feed = feed
 
     def __repr__(self) -> str:
-        return ("{}(query={}, feed={}, max_results={})").format(
+        return ("{}(query={}, feed={}, max_results={}, id_list={})").format(
             _classname(self),
             repr(self.query),
             repr(self.feed),
             repr(self.max_results),
+            repr(self.id_list),
         )
 
 
@@ -111,13 +113,14 @@ class RSSResult(BaseResult):
             title = entry.title
         else:
             logger.warning("Result %s is missing title attribute; defaulting to '0'", entry.id)
+
         return cls(
             entry_id=str("https://arxiv.org/abs/" + entry.summary.split(" ", 1)[0])
             if "arxiv:" not in entry.summary.lower()
             else str("https://arxiv.org/abs/" + entry.summary.split(" ", 1)[0][6:]),
             feed_date=_to_datetime(entry.published_parsed),
             title=re.sub(r"\s+", " ", title),
-            authors=[cls.Author._from_feed_author(a) for a in entry.authors],
+            authors=cls._parse_authors(entry.authors[0].name),
             summary=entry.summary.split("Abstract: ", 1)[-1],
             announce_type=AnnounceType(entry.arxiv_announce_type),
             journal_ref=entry.get("arxiv_journal_ref"),
@@ -126,6 +129,43 @@ class RSSResult(BaseResult):
             links=[cls.Link._from_feed_link(link) for link in entry.links],
             _raw=entry,
         )
+
+    @classmethod
+    def _parse_authors(self, input_string: str) -> List[BaseResult.Author]:
+        """Parse the authors from the input string."""
+        # Split the string by commas, but not within parentheses
+        parts = re.split(r",\s*(?![^()]*\))", input_string.strip())
+        result: List[BaseResult.Author] = []
+
+        current_name = ""
+        for part in parts:
+            # Check if this part contains institutions (has parentheses)
+            institutions_match = re.search(r"\((.*?)\)", part)
+
+            if institutions_match:
+                # Extract name and institutions
+                name_part = part[: institutions_match.start()].strip()
+                institutions_raw = institutions_match.group(1)
+
+                # If there was a previous name without institutions, add it
+                if current_name:
+                    result.append(BaseResult.Author(name=current_name))
+                    current_name = ""
+
+                result.append(BaseResult.Author(name=name_part, institutions=institutions_raw))
+
+            else:
+                # If there was a previous name without institutions, add it
+                if current_name:
+                    result.append(BaseResult.Author(name=current_name))
+
+                current_name = part.strip()
+
+        # Add the last name if it exists
+        if current_name:
+            result.append(BaseResult.Author(name=current_name))
+
+        return result
 
     def __repr__(self) -> str:
         return (

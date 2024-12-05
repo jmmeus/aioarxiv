@@ -145,6 +145,25 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             results = [r async for r in client.results(search)]
             self.assertEqual(len(results), 2)
 
+    async def test_rss_id_list(self):
+        mock_session = session_with_mock_feed("valid")
+        desired_ids = ["2411.17700v1", "2411.17701v1", "1901.01108v5"]
+        async with aioarxiv.Client() as client:
+            with patch.object(client, "_session", mock_session):
+                search = aioarxiv.RSSQuery(
+                    query="test",
+                    id_list=[
+                        "2411.17700",
+                        "2411.17701",
+                        "1901.01108",
+                        "2006.09386v2",
+                        "2006.09386v2",
+                        "2411.15345v1",
+                    ],
+                )
+                result_ids = [r.get_short_id() async for r in client.results(search)]
+                self.assertEqual(result_ids, desired_ids)
+
     async def test_query_page_count(self):
         async with aioarxiv.Client(page_size=10) as client:
             client._parse_feed = MagicMock(wraps=client._parse_feed)
@@ -204,6 +223,41 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
                 ]
                 self.assertListEqual(offset_above_max_results, [])
 
+    async def test_rss_offset_with_id_list(self):
+        max_results = 10
+        mock_session = session_with_mock_feed("valid")
+        search = aioarxiv.RSSQuery(
+            query="test",
+            max_results=max_results,
+            id_list=[
+                "2411.17700",
+                "2411.17701",
+                "1901.01108",
+                "2006.09386",
+                "2411.15345",
+                "2411.16850",
+                "2401.08895",
+                "2401.13483",
+                "2401.15112",
+                "2401.16037",
+                "2402.02266",
+            ],
+        )
+        async with aioarxiv.Client(page_size=10) as client:
+            with patch.object(client, "_session", mock_session):
+                default = [r async for r in client.results(search)]
+                no_offset = [r async for r in client.results(search)]
+                self.assertListEqual(default, no_offset)
+
+                offset = max_results // 2
+                half_offset = [r async for r in client.results(search, offset=offset)]
+                self.assertListEqual(default[offset:], half_offset)
+
+                offset_above_max_results = [
+                    r async for r in client.results(search, offset=max_results)
+                ]
+                self.assertListEqual(offset_above_max_results, [])
+
     async def test_search_results_offset(self):
         # NOTE: page size is irrelevant here.
         async with aioarxiv.Client(page_size=15) as client:
@@ -223,6 +277,37 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
         async with aioarxiv.Client(page_size=15) as client:
             with patch.object(client, "_session", mock_session):
                 search = aioarxiv.RSSQuery(query="test", max_results=10)
+                all_results = [r async for r in client.results(search, offset=0)]
+                self.assertEqual(len(all_results), 10)
+
+                for offset in [0, 5, 9, 10, 11]:
+                    client_results = [r async for r in client.results(search, offset=offset)]
+                    self.assertEqual(len(client_results), max(0, search.max_results - offset))
+                    if client_results:
+                        self.assertEqual(all_results[offset].entry_id, client_results[0].entry_id)
+
+    async def test_rss_results_offset_with_id_list(self):
+        # NOTE: page size is irrelevant here.
+        mock_session = session_with_mock_feed("valid")
+        async with aioarxiv.Client(page_size=15) as client:
+            with patch.object(client, "_session", mock_session):
+                search = aioarxiv.RSSQuery(
+                    query="test",
+                    max_results=10,
+                    id_list=[
+                        "2411.17700",
+                        "2411.17701",
+                        "1901.01108",
+                        "2006.09386",
+                        "2411.15345",
+                        "2411.16850",
+                        "2401.08895",
+                        "2401.13483",
+                        "2401.15112",
+                        "2401.16037",
+                        "2402.02266",
+                    ],
+                )
                 all_results = [r async for r in client.results(search, offset=0)]
                 self.assertEqual(len(all_results), 10)
 

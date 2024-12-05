@@ -21,14 +21,6 @@ class SearchQuery(BaseQuery):
     To run a query, use `Client.results` with an instantiated client.
     """
 
-    id_list: List[str]
-    """
-    A list of arXiv article IDs to which to limit the search.
-
-    See [the arXiv API User's
-    Manual](https://arxiv.org/help/api/user-manual#search_query_and_id_list)
-    for documentation of the interaction between `query` and `id_list`.
-    """
     sort_by: SortCriterion
     """The sort criterion for results."""
     sort_order: SortOrder
@@ -45,8 +37,7 @@ class SearchQuery(BaseQuery):
         """
         Constructs an arXiv API search with the specified criteria.
         """
-        super().__init__(query=query, max_results=max_results)
-        self.id_list = id_list
+        super().__init__(query=query, max_results=max_results, id_list=id_list)
         self.sort_by = sort_by
         self.sort_order = sort_order
 

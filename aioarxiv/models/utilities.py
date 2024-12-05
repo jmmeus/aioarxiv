@@ -26,3 +26,8 @@ def validate_arxiv_url(url: str) -> bool:
     post2007regex = r"https://arxiv\.org/abs/\d{4}\.\d{5}(v\d+)?"
     pre2007regex = r"https://arxiv\.org/abs/[a-zA-Z0-9_.+-]+/\d{7}(v\d+)?"
     return bool(re.match(post2007regex, url) or re.match(pre2007regex, url))
+
+
+def strip_arxiv_id_version(arxiv_id: str) -> str:
+    """Strip the version from an arXiv ID."""
+    return re.sub(r"v\d+$", "", arxiv_id)

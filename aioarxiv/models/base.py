@@ -213,8 +213,10 @@ class BaseResult(object):
 
         name: str
         """The author's name."""
+        institutions: Optional[str]
+        """The author's institutions if available."""
 
-        def __init__(self, name: str):
+        def __init__(self, name: str, institutions: Optional[str] = None):
             """
             Constructs an `Author` with the specified name.
 
@@ -222,6 +224,7 @@ class BaseResult(object):
             and constructing `Author`s yourself.
             """
             self.name = name
+            self.institutions = institutions
 
         @classmethod
         def _from_feed_author(cls, feed_author: feedparser.FeedParserDict) -> BaseResult.Author:
@@ -236,8 +239,10 @@ class BaseResult(object):
         def __str__(self) -> str:
             return self.name
 
-        def __repr__(self) -> str:
-            return f"{self.__class__.__name__}({repr(self.name)})"
+        def __repr__(self):
+            return (
+                f"{self.__class__.__name__}(name={self.name!r}, institutions={self.institutions!r})"
+            )
 
         def __eq__(self, other) -> bool:
             if isinstance(other, BaseResult.Author):
@@ -354,17 +359,27 @@ class BaseQuery(object):
 
     The API's limit is 300,000 results per query for Searches, and 2,000 for RSS feeds.
     """
+    id_list: List[str]
+    """
+    A list of arXiv article IDs to which to limit the search.
+
+    See [the arXiv API User's
+    Manual](https://arxiv.org/help/api/user-manual#search_query_and_id_list)
+    for documentation of the interaction between `query` and `id_list`.
+    """
 
     def __init__(
         self,
         query: str = "",
         max_results: Optional[int] = None,
+        id_list: List[str] = [],
     ):
         """
         Constructs an arXiv API query with the specified criteria.
         """
         self.query = query
         self.max_results = max_results
+        self.id_list = id_list
 
     def __str__(self) -> str:
         # TODO: develop a more informative string representation.
